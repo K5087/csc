@@ -15,8 +15,15 @@
 #endif // _Win32
 
 namespace csc {
+using Path = std::filesystem::path;
 
 namespace OS {
+enum class System {
+    linux,
+    windows,
+    macos,
+};
+
 inline bool is_terminal() {
 #ifdef _WIN32
     return GetFileType(GetStdHandle(STD_OUTPUT_HANDLE)) == FILE_TYPE_CHAR;
@@ -26,16 +33,16 @@ inline bool is_terminal() {
 }
 } // namespace OS
 
-namespace Compiler {
+namespace predefine {
 #if defined __clang__
 static std::string current_compiler = "clang++";
 #elif define __GUN__
 static std::string current_compiler = "gcc";
 #endif // __clang__
 
-} // namespace Compiler
+} // namespace predefine
 
-namespace log {
+namespace log_impl {
 enum Level {
     code,
     info,
@@ -81,7 +88,7 @@ inline std::string colorize_str(const std::string_view str, Color color) {
     }
 }
 
-inline void log_impl(Level level, const std::string& fmt, va_list list) {
+inline void log_color(Level level, const std::string& fmt, va_list list) {
     switch (level) {
         case Level::code: std::fprintf(stderr, "%s", colorize_str("[code]", Color::blue).c_str()); break;
         case Level::info: std::fprintf(stderr, "%s", colorize_str("[info]", Color::green).c_str()); break;
@@ -92,43 +99,112 @@ inline void log_impl(Level level, const std::string& fmt, va_list list) {
     std::fprintf(stderr, "\n");
 }
 
-#define CSC_CODE log::Level::code
-#define CSC_INFO log::Level::info
-#define CSC_WARN log::Level::warn
-#define CSC_ERRO log::Level::erro
-} // namespace log
+#define CODE log_impl::Level::code
+#define INFO log_impl::Level::info
+#define WARN log_impl::Level::warn
+#define ERRO log_impl::Level::erro
+} // namespace log_impl
 
-inline void csc_log(log::Level level, std::string_view fmt, ...) {
+inline void log(log_impl::Level level, std::string_view fmt, ...) {
     va_list list;
     va_start(list, fmt);
-    log_impl(level, std::string(fmt), list);
+    log_color(level, std::string(fmt), list);
     va_end(list);
 }
 
 namespace Error_Handle {
 
-enum class build_error {
-    ok,
-    exec,
-};
-
-class ErrorInfo {
-public:
-    std::string message;
-
-public:
-    ErrorInfo(const std::string_view str) { message = str; }
-};
-
 template <typename T>
-using Result = std::expected<T, ErrorInfo>;
-using Reason = std::unexpected<ErrorInfo>;
+using Result = std::expected<T, std::string>;
+using Reason = std::unexpected<std::string>;
 
 } // namespace Error_Handle
 
-class Cmd {
-    using path = std::filesystem::path;
+class Translation_Unit {
+public:
+    Path path;
 
+    Translation_Unit(Path path) : path(path) {};
+};
+
+namespace ToolChain {
+
+enum class CompilerType {
+    clang,
+    gcc,
+};
+
+template <CompilerType T>
+class Compiler {
+public:
+    Path path;
+
+public:
+    Compiler() = delete;
+    Compiler(Path path) : path(path) {};
+};
+
+class ToolChain {
+    using dir = std::filesystem::path;
+
+public:
+    dir base;
+    dir bin;
+
+    dir get_stdlib_dir() const {
+        return base / "share/libc++/v1/std.cppm";
+    }
+};
+
+class Clang : public Compiler<CompilerType::clang> {
+public:
+    std::vector<std::string> compile_module_option(const Translation_Unit& uints, const Path& targetpath = ".") {
+        return {uints.path.string(), "--precompile", "-o", (targetpath / uints.path.filename()).string()};
+    }
+
+    std::vector<std::string> compile_stdmodule_option(const ToolChain& toolchain, const Path& targetpath = ".") {
+        return {toolchain.get_stdlib_dir().string(), "--precompile", "-o", (targetpath / "std.pcm").string()};
+    }
+
+private:
+};
+} // namespace ToolChain
+
+class Target {
+    enum class Type {
+        exe,
+        static_lib,
+        dynamic_lib,
+    };
+    enum class Architecture {
+        x86_64,
+        aarch64,
+        armv7,
+        i686,
+        arm64ec,
+    };
+
+public:
+    Type                          type         = Type::exe;
+    std::string                   name         = "default target";
+    Architecture                  architecture = Architecture::x86_64;
+    std::vector<Translation_Unit> translations;
+};
+
+class Project {
+    using dir = std::filesystem::path;
+
+public:
+    std::string name  = "default project";
+    dir         build = std::filesystem::current_path() / "build";
+
+    std::vector<Target> targets;
+
+public:
+    Project(const std::string& str) : name(str) {};
+};
+
+class Cmd {
 public:
     template <typename... T>
     Cmd(T&&... t) { (AppendDispatch(std::forward<T>(t)), ...); }
@@ -186,34 +262,32 @@ private:
     std::vector<std::string> params;
 
 private:
-    template <class T>
-    void AppendDispatch(T&& t) {
-        AppendOne(std::forward<T>(t));
-    }
+    void AppendDispatch(const char* s) { params.emplace_back(s); }
 
-    void AppendOne(const char* s) { params.emplace_back(s); }
+    void AppendDispatch(const std::string& s) { params.emplace_back(s); }
 
-    void AppendOne(const std::string& s) { params.emplace_back(s); }
+    void AppendDispatch(std::string_view s) { params.emplace_back(s); }
 
-    void AppendOne(std::string_view s) { params.emplace_back(s); }
-
-    void AppendOne(const path& p) {
+    void AppendDispatch(const Path& p) {
         params.emplace_back(p.string());
     }
 
-    void AppendRange(const std::vector<path>& paths) {
+    void AppendDispatch(const std::vector<Path>& paths) {
         params.reserve(params.size() + paths.size());
         for (auto& path : paths) { params.emplace_back(path.string()); }
+    }
+
+    void AppendDispatch(const std::vector<std::string>& paths) {
+        params.reserve(params.size() + paths.size());
+        for (auto& path : paths) { params.emplace_back(path); }
     }
 };
 
 class Cmdopt {
-    using path = std::filesystem::path;
-
 public:
-    path in;
-    path out;
-    path err;
+    Path in;
+    Path out;
+    Path err;
 
 public:
 };
@@ -223,14 +297,14 @@ inline std::error_code redirect_stream(const std::filesystem::path& path) {
 #ifdef _WIN32
 
 #else
-    csc_log(CSC_ERRO, "could not open file %s: %s", path.c_str(), std::strerror(errno));
+    log(ERRO, "could not open file %s: %s", path.c_str(), std::strerror(errno));
 #endif
     return ec;
 }
 
 inline bool run_cmd(const Cmd& cmd, Cmdopt opt = Cmdopt()) {
     if (cmd.empty()) {
-        csc_log(CSC_ERRO, "Could not run empty command");
+        log(ERRO, "Could not run empty command");
         return false;
     }
 #ifdef _WIN32
@@ -239,7 +313,7 @@ inline bool run_cmd(const Cmd& cmd, Cmdopt opt = Cmdopt()) {
 
     BOOL result = CreateProcessA(NULL, cmd.GetCommandStr().data(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
     if (!result) {
-        csc_log(CSC_ERRO, "CreateProcess failed!");
+        log(ERRO, "CreateProcess failed!");
         return false;
     }
     WaitForSingleObject(pi.hProcess, INFINITE);
@@ -249,7 +323,7 @@ inline bool run_cmd(const Cmd& cmd, Cmdopt opt = Cmdopt()) {
 #else
     pid_t cpid = fork();
     if (cpid < 0) {
-        csc_log(CSC_ERRO, "Coull not fork child process: %s", std::strerror(errno));
+        log(ERRO, "Coull not fork child process: %s", std::strerror(errno));
         return false;
     }
     if (cpid == 0) {
@@ -257,12 +331,6 @@ inline bool run_cmd(const Cmd& cmd, Cmdopt opt = Cmdopt()) {
     }
 #endif // _Win32
     return true;
-}
-
-inline std::error_code mkdir_if_noexist(const std::filesystem::path& path) {
-    std::error_code ec;
-    std::filesystem::create_directories(path, ec);
-    return ec;
 }
 
 namespace build {
@@ -289,7 +357,7 @@ inline bool check_rebuild(const path& output, const std::vector<path>& inputs) {
     return false;
 }
 
-inline Result<bool> register_rebuild_self(int argc, char** argv, const path& source_path) {
+inline Result<bool> update_self(int argc, char** argv, const path& source_path) {
     using namespace Error_Handle;
 
     path binary_path(argv[0]);
@@ -311,17 +379,23 @@ inline Result<bool> register_rebuild_self(int argc, char** argv, const path& sou
     path old_binary_path = binary_path;
     old_binary_path += ".old";
     std::filesystem::rename(binary_path, old_binary_path);
-    compile_cmd.Append(Compiler::current_compiler, "-std=c++23", "-o", binary_path, source_path);
+    compile_cmd.Append(predefine::current_compiler, "-std=c++23", "-o", binary_path, source_path);
     if (!run_cmd(compile_cmd)) {
         return Reason("compile failed");
     }
+    std::filesystem::remove(old_binary_path);
     Cmd exec_cmd(binary_path);
-    exec_cmd.AppendRange(argc - 1, argv);
+    exec_cmd.AppendRange(argc - 1, argv + 1);
     if (!run_cmd(exec_cmd)) {
         return Reason("exec cmd failed");
     }
     return true;
 }
 
+template <ToolChain::CompilerType T>
+inline bool compile_translation_unit(ToolChain::Compiler<T>& compiler, std::vector<std::string> options = {}) {
+    Cmd cmd(compiler.path, options);
+    return run_cmd(cmd);
+}
 } // namespace build
 } // namespace csc
