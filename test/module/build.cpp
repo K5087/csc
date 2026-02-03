@@ -3,16 +3,20 @@
 using namespace csc;
 using namespace csc::ToolChain;
 
+void update_self(int argc, char** argv) {
+    auto result = build::update_self(argc, argv, __FILE__,{"../../csc.hpp"});
+    if (!result) {
+        log(ERRO, result.error());
+    } else {
+        // update success,exit old build
+        if (result.value()) std::exit(0);
+    }
+}
+
 void compile_module() {
-    Clang clang("clang++");
-
-    // Compiler<CompilerType::clang> clang;
-    build::compile_translation_unit(clang, clang.compile_module_option(Path("answer.cppm")));
-
-    // Cmd stdcmd;
-    // stdcmd.Append("clang++", "-std=c++23", "-stdlib=libc++", "-Wno-reserved-module-identifier", "--precompile", "-o", "std.pcm",
-    //            "C:/OS/ToolChain/llvm-mingw-20251216-ucrt-x86_64/share/libc++/v1/std.cppm");
-    // run_cmd(stdcmd);
+    Clang clang;
+    Cmd   cmd(clang.path, clang.compile_module_option("answer.cppm"), "-std=c++23");
+    run_cmd(cmd);
 }
 
 void build_target() {
@@ -23,12 +27,7 @@ void build_target() {
 }
 
 int main(int argc, char* argv[]) {
-    auto result = build::update_self(argc, argv, __FILE__);
-    if (!result) {
-        log(ERRO, result.error());
-    } else {
-        if (result.value()) return 0;
-    }
+    update_self(argc, argv);
     compile_module();
     build_target();
 }

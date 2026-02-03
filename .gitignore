@@ -43,3 +43,5 @@
 # build file
 build
 
+# back file
+*.exe.old

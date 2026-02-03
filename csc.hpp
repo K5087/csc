@@ -1,7 +1,10 @@
 #include <cstdarg>
 #include <expected>
 #include <filesystem>
+#include <fstream>
+#include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <cstring>
@@ -15,7 +18,12 @@
 #endif // _Win32
 
 namespace csc {
+using Dir  = std::filesystem::path;
 using Path = std::filesystem::path;
+
+template <typename T>
+using Result = std::expected<T, std::string>;
+using Reason = std::unexpected<std::string>;
 
 namespace OS {
 enum class System {
@@ -30,6 +38,23 @@ inline bool is_terminal() {
 #else
     return isatty(fileno(stderr));
 #endif // _WIN32
+}
+
+inline Result<std::vector<char>> ReadFile(const Path& path) {
+    std::ifstream file(path, std::ios::ate | std::ios::binary);
+
+    if (!file) {
+        return Reason("failed to open file!");
+    }
+    file.seekg(0, std::ios::end);
+    size_t size = file.tellg();
+
+    std::vector<char> buffer(size);
+
+    file.seekg(0);
+    file.read(buffer.data(), size);
+    file.close();
+    return buffer;
 }
 } // namespace OS
 
@@ -112,96 +137,21 @@ inline void log(log_impl::Level level, std::string_view fmt, ...) {
     va_end(list);
 }
 
-namespace Error_Handle {
+struct DepInfo {
+    std::vector<Path> targets;
+    std::vector<Path> depends;
+    DepInfo() = default;
 
-template <typename T>
-using Result = std::expected<T, std::string>;
-using Reason = std::unexpected<std::string>;
-
-} // namespace Error_Handle
+    DepInfo(std::vector<std::string>& target, std::vector<std::string>& depend) : targets(target.begin(), target.end()), depends(depend.begin(), depend.end()) {
+    };
+};
 
 class Translation_Unit {
 public:
     Path path;
+    Path obj;
 
     Translation_Unit(Path path) : path(path) {};
-};
-
-namespace ToolChain {
-
-enum class CompilerType {
-    clang,
-    gcc,
-};
-
-template <CompilerType T>
-class Compiler {
-public:
-    Path path;
-
-public:
-    Compiler() = delete;
-    Compiler(Path path) : path(path) {};
-};
-
-class ToolChain {
-    using dir = std::filesystem::path;
-
-public:
-    dir base;
-    dir bin;
-
-    dir get_stdlib_dir() const {
-        return base / "share/libc++/v1/std.cppm";
-    }
-};
-
-class Clang : public Compiler<CompilerType::clang> {
-public:
-    std::vector<std::string> compile_module_option(const Translation_Unit& uints, const Path& targetpath = ".") {
-        return {uints.path.string(), "--precompile", "-o", (targetpath / uints.path.filename()).string()};
-    }
-
-    std::vector<std::string> compile_stdmodule_option(const ToolChain& toolchain, const Path& targetpath = ".") {
-        return {toolchain.get_stdlib_dir().string(), "--precompile", "-o", (targetpath / "std.pcm").string()};
-    }
-
-private:
-};
-} // namespace ToolChain
-
-class Target {
-    enum class Type {
-        exe,
-        static_lib,
-        dynamic_lib,
-    };
-    enum class Architecture {
-        x86_64,
-        aarch64,
-        armv7,
-        i686,
-        arm64ec,
-    };
-
-public:
-    Type                          type         = Type::exe;
-    std::string                   name         = "default target";
-    Architecture                  architecture = Architecture::x86_64;
-    std::vector<Translation_Unit> translations;
-};
-
-class Project {
-    using dir = std::filesystem::path;
-
-public:
-    std::string name  = "default project";
-    dir         build = std::filesystem::current_path() / "build";
-
-    std::vector<Target> targets;
-
-public:
-    Project(const std::string& str) : name(str) {};
 };
 
 class Cmd {
@@ -219,6 +169,8 @@ public:
             params.emplace_back(argv[i]);
         }
     }
+
+    void Clear() { params.clear(); };
 
     std::string GetCommandStr() const {
         std::string Command;
@@ -269,12 +221,12 @@ private:
     void AppendDispatch(std::string_view s) { params.emplace_back(s); }
 
     void AppendDispatch(const Path& p) {
-        params.emplace_back(p.string());
+        params.emplace_back(p.generic_string());
     }
 
     void AppendDispatch(const std::vector<Path>& paths) {
         params.reserve(params.size() + paths.size());
-        for (auto& path : paths) { params.emplace_back(path.string()); }
+        for (auto& path : paths) { params.emplace_back(path.generic_string()); }
     }
 
     void AppendDispatch(const std::vector<std::string>& paths) {
@@ -292,21 +244,12 @@ public:
 public:
 };
 
-inline std::error_code redirect_stream(const std::filesystem::path& path) {
-    std::error_code ec;
-#ifdef _WIN32
-
-#else
-    log(ERRO, "could not open file %s: %s", path.c_str(), std::strerror(errno));
-#endif
-    return ec;
-}
-
 inline bool run_cmd(const Cmd& cmd, Cmdopt opt = Cmdopt()) {
     if (cmd.empty()) {
         log(ERRO, "Could not run empty command");
         return false;
     }
+    // log(CODE, cmd.GetCommandStr());
 #ifdef _WIN32
     STARTUPINFOA        si = {sizeof(si)};
     PROCESS_INFORMATION pi;
@@ -333,17 +276,134 @@ inline bool run_cmd(const Cmd& cmd, Cmdopt opt = Cmdopt()) {
     return true;
 }
 
+namespace ToolChain {
+
+enum class CompilerType {
+    clang,
+    gcc,
+};
+
+class Compiler {
+public:
+    Path path;
+
+public:
+    Compiler() = delete;
+    Compiler(Path path) : path(path) {};
+
+public:
+    virtual bool generate_depfile(const Path& input, const Path output, const std::vector<std::string>& options, std::optional<Path> target) {
+        std::vector<std::string> target_option = target ? std::vector<std::string>{"-MT", target->string()} : std::vector<std::string>{};
+
+        Cmd cmd(path, "-MMD", "-MF", output, input, target_option, options);
+        return run_cmd(cmd);
+    }
+
+    virtual bool compile_unit(const Path& input, const Path output, const std::vector<std::string> options) {
+        Cmd cmd(path, "-c", input, "-o", output, options);
+        return run_cmd(cmd);
+    }
+
+    virtual bool link_target(const Path& output, const std::vector<Path>& depfiles) {
+        Cmd cmd(path, depfiles, "-o", output);
+        return run_cmd(cmd);
+    }
+
+    virtual bool compile_and_gendep_unit(const Path& input, const Path obj, const Path& dep, const std::vector<std::string>& options) {
+        Cmd cmd(path, "-c", input, "-o", obj, "-MMD", "-MF", dep, "-MT", obj, options);
+        return run_cmd(cmd);
+    }
+
+private:
+};
+
+class ToolChain {
+public:
+    Dir base;
+    Dir bin;
+
+public:
+    virtual Dir get_stdlib_dir() const = 0;
+};
+
+class Clang : public Compiler {
+public:
+    Clang() : Compiler("clang++") {};
+
+    std::vector<std::string> compile_module_option(const Path& uints, const Path& targetdir = ".") {
+        Path targetpath = targetdir / uints.filename().string();
+        targetpath.replace_extension(".pcm");
+        return {uints.string(), "--precompile", "-o", targetpath.string()};
+    }
+
+    std::vector<std::string> compile_stdmodule_option(const ToolChain& toolchain, const Path& targetdir = ".") {
+        Path targetpath = targetdir / "std.pcm";
+        return {toolchain.get_stdlib_dir().string(), "--precompile", "-o", targetpath.string()};
+    }
+
+private:
+};
+} // namespace ToolChain
+
+inline std::error_code redirect_stream(const std::filesystem::path& path) {
+    std::error_code ec;
+#ifdef _WIN32
+
+#else
+    log(ERRO, "could not open file %s: %s", path.c_str(), std::strerror(errno));
+#endif
+    return ec;
+}
+
 namespace build {
-using std::filesystem::path;
-using Reason = csc::Error_Handle::Reason;
+class Graph {
+public:
+    std::vector<Path>                               units;
+    std::unordered_map<size_t, std::vector<size_t>> dependences;
 
-template <class T>
-using Result = csc::Error_Handle::Result<T>;
+    // TODO: maybe string_view better
+    std::unordered_map<Path, size_t> unit_map;
 
-inline bool check_rebuild(const path& output, const std::vector<path>& inputs) {
+    void add_depinfo(const DepInfo& dep_info, const Translation_Unit& unit) {
+        size_t unit_index = find_or_add(unit.path);
+
+        dependences[unit_index].reserve(dep_info.depends.size());
+        for (auto& dep : dep_info.depends) {
+            size_t dep_index = find_or_add(dep);
+            dependences[unit_index].push_back(dep_index);
+        }
+    }
+
+    std::vector<Path> get_deps(const Translation_Unit& unit) {
+        auto it = unit_map.find(unit.path);
+        if (it == unit_map.end()) { return {}; }
+
+        std::vector<Path> deps;
+
+        auto& index = dependences[it->second];
+        deps.reserve(index.size());
+
+        for (auto i : index) {
+            deps.push_back(units[i]);
+        }
+        return deps;
+    }
+
+private:
+    size_t find_or_add(const Path& path) {
+        auto [it, inserted] = unit_map.try_emplace(path, units.size());
+        if (inserted) {
+            units.push_back(path);
+        }
+        return it->second;
+    }
+};
+
+inline bool check_rebuild(const Path& output, const std::vector<Path>& inputs) {
     using std::filesystem::last_write_time;
     BOOL bSuccess;
 
+    if (!std::filesystem::exists(output)) { return true; }
     auto ouput_time = last_write_time(output);
 
     for (size_t i = 0; i < inputs.size(); ++i) {
@@ -357,10 +417,8 @@ inline bool check_rebuild(const path& output, const std::vector<path>& inputs) {
     return false;
 }
 
-inline Result<bool> update_self(int argc, char** argv, const path& source_path) {
-    using namespace Error_Handle;
-
-    path binary_path(argv[0]);
+inline Result<bool> update_self(int argc, char** argv, const Path& source_path, std::vector<Path> other_path = {}) {
+    Path binary_path(argv[0]);
 #ifdef _WIN32
     if (binary_path.extension() != ".exe") {
         binary_path.replace_extension(".exe");
@@ -369,21 +427,23 @@ inline Result<bool> update_self(int argc, char** argv, const path& source_path) 
 
 #endif // _WIN32
     // bool need_rebuild = check_rebuild(binary_path, {});
-    bool need_rebuild = check_rebuild(binary_path, {source_path});
+    std::vector<Path> check_path = other_path;
+    check_path.push_back(source_path);
+    bool need_rebuild = check_rebuild(binary_path, check_path);
 
     if (!need_rebuild) {
         return false;
     }
 
     Cmd  compile_cmd;
-    path old_binary_path = binary_path;
+    Path old_binary_path = binary_path;
     old_binary_path += ".old";
     std::filesystem::rename(binary_path, old_binary_path);
     compile_cmd.Append(predefine::current_compiler, "-std=c++23", "-o", binary_path, source_path);
     if (!run_cmd(compile_cmd)) {
         return Reason("compile failed");
     }
-    std::filesystem::remove(old_binary_path);
+    // std::filesystem::remove(old_binary_path);
     Cmd exec_cmd(binary_path);
     exec_cmd.AppendRange(argc - 1, argv + 1);
     if (!run_cmd(exec_cmd)) {
@@ -392,10 +452,237 @@ inline Result<bool> update_self(int argc, char** argv, const path& source_path) 
     return true;
 }
 
-template <ToolChain::CompilerType T>
-inline bool compile_translation_unit(ToolChain::Compiler<T>& compiler, std::vector<std::string> options = {}) {
-    Cmd cmd(compiler.path, options);
-    return run_cmd(cmd);
+inline std::optional<DepInfo> parse_dep_file(const Path& dep_path) {
+    Result<std::vector<char>> result = OS::ReadFile(dep_path);
+    if (!result) {
+        log(WARN, result.error());
+        return std::nullopt;
+    }
+
+    // not good
+    auto        data = result.value();
+    std::string file;
+    file.reserve(data.size());
+
+    for (size_t i = 0; i < data.size(); ++i) {
+        char c = data[i];
+
+        if (c == '\\') {
+            if (i + 1 < data.size() && data[i + 1] == '\n') {
+                ++i;
+                continue;
+            }
+            if (i + 2 < data.size() && data[i + 1] == '\r' && data[i + 2] == '\n') {
+                i += 2;
+                continue;
+            }
+        }
+
+        file.push_back(c);
+    }
+
+    auto find_unescaped_colon = [](std::string_view s) {
+        bool esc = false;
+        for (size_t i = 0; i < s.size(); ++i) {
+            if (esc) {
+                esc = false;
+                continue;
+            }
+            if (s[i] == '\\') {
+                esc = true;
+                continue;
+            }
+            if (s[i] == ':') return i;
+        }
+        return std::string_view::npos;
+    };
+
+    auto tokenize = [](std::string_view s) {
+        auto                     is_ws = [](unsigned char c) { return std::isspace(c); };
+        std::vector<std::string> out;
+        size_t                   i = 0;
+        while (i < s.size()) {
+            while (i < s.size() && is_ws((unsigned char)s[i])) ++i;
+            if (i >= s.size()) break;
+            std::string tok;
+            while (i < s.size() && !is_ws((unsigned char)s[i])) {
+                if (s[i] == '\\' && i + 1 < s.size()) {
+                    ++i;
+                    tok.push_back(s[i++]);
+                } else
+                    tok.push_back(s[i++]);
+            }
+            out.push_back(std::move(tok));
+        }
+        return out;
+    };
+
+    size_t           colon = find_unescaped_colon(file);
+    std::string_view lhs(file.data(), colon);
+    std::string_view rhs(file.data() + colon + 1, file.size() - colon - 1);
+
+    auto targets = tokenize(lhs);
+    auto deps    = tokenize(rhs);
+    return DepInfo{targets, deps};
 }
+
+// check success?
+inline bool check_dep_file(const Translation_Unit& unit, const Path& dep_path, const Path& obj, Graph* graph = nullptr) {
+    auto result = parse_dep_file(dep_path);
+    if (!result) {
+        return false;
+    }
+    DepInfo dep_info = result.value();
+    if (graph) {
+        graph->add_depinfo(dep_info, unit);
+    }
+
+    return check_rebuild(obj, dep_info.depends);
+}
+
+inline bool compile_translation_unit(ToolChain::Compiler& compiler, Translation_Unit& unit, const Dir& out_dir = "build", std::vector<std::string> options = {}, Graph* graph = nullptr) {
+    Path obj = out_dir / unit.path.filename();
+    obj.replace_extension(".o");
+    Path dep = obj;
+    dep.replace_extension(".d");
+    unit.obj = obj;
+
+    // TODO: generate_dependence maybe different by options,should add cache to diff
+
+    bool need_rebuild = check_dep_file(unit, dep, obj, graph);
+    if (!need_rebuild) {
+        return true;
+    }
+
+    log(CODE, "%s need to rebuild", unit.path.string().c_str());
+    bool result = false;
+    std::filesystem::create_directories(out_dir);
+    if (graph) {
+        result = compiler.compile_and_gendep_unit(unit.path, obj, dep, options);
+    } else {
+        result = compiler.compile_unit(unit.path, obj, options);
+    }
+
+    // log(CODE, cmd.GetCommandStr());
+    return result;
+}
+
 } // namespace build
+
+class Target {
+    enum class Type {
+        exe,
+        static_lib,
+        dynamic_lib,
+    };
+    enum class Architecture {
+        x86_64,
+        aarch64,
+        armv7,
+        i686,
+        arm64ec,
+    };
+
+    enum class CppVersion {
+        cpp11,
+        cpp14,
+        cpp17,
+        cpp20,
+        cpp23,
+        cpp26,
+    };
+
+public:
+    Dir         out_dir = std::filesystem::current_path() / "build";
+    Type        type    = Type::exe;
+    std::string name    = "default target";
+
+    CppVersion   version      = CppVersion::cpp23;
+    Architecture architecture = Architecture::x86_64;
+
+    std::set<std::string>         options;
+    std::vector<Translation_Unit> units;
+
+    build::Graph graph;
+
+public:
+    Target(const std::string& str) : name{str} {};
+
+    void add_translation_units(const std::vector<Translation_Unit>& files) { units.append_range(files); };
+
+    Path get_target_path(const Dir& out_dir) const {
+        return out_dir / (name + ".exe");
+    }
+
+    std::vector<Path> obj_files() const {
+        std::vector<Path> objs;
+        objs.reserve(units.size());
+        for (auto& i : units) {
+            objs.push_back(i.obj);
+        }
+        return objs;
+    }
+
+    std::vector<std::string> get_options() const {
+        return {options.begin(), options.end()};
+    }
+
+    void add_options(std::string_view str) {
+        options.insert(std::string(str));
+    }
+};
+
+class Project {
+public:
+    std::string name;
+    Dir         root;
+    Dir         build;
+
+    std::vector<Target> targets;
+
+public:
+    Project() : name("default project") {};
+    Project(const std::string& str) : name(str), root(std::filesystem::current_path()), build(root / "build") {};
+
+    Target& add_target(Target&& target) noexcept {
+        targets.emplace_back(std::move(target));
+        return targets.back();
+    };
+
+    Target& operator[](std::string_view key) {
+        for (auto& target : targets) {
+            if (target.name == key) {
+                return target;
+            }
+        }
+        log(ERRO, "failed to get %s from project", key);
+        std::abort();
+    }
+
+    const Target& operator[](std::string_view key) const noexcept {
+        for (auto& target : targets) {
+            if (target.name == key) {
+                return target;
+            }
+        }
+        log(ERRO, "failed to get %s from project", key);
+        std::abort();
+    }
+};
+
+inline bool build_target(ToolChain::Compiler& compiler, Target& target, const Dir& root = ".", const Dir& build_dir = "build") {
+    for (auto& unit : target.units) {
+        Dir relative = std::filesystem::relative(unit.path.parent_path(), root);
+        Dir out_dir  = (build_dir / relative).lexically_normal();
+        if (!build::compile_translation_unit(compiler, unit, out_dir, target.get_options(), &target.graph)) {
+            log(ERRO, "compile %s failed", unit.path.generic_string().c_str());
+            continue;
+        }
+    }
+
+    // Path target_path = target.get_target_path(build_dir);
+    // build::check_rebuild(target_path, )
+    return compiler.link_target(target.get_target_path(build_dir), target.obj_files());
+}
+
 } // namespace csc

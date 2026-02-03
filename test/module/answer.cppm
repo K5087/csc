@@ -1,5 +1,5 @@
 export module answer;
 
-export int get_answer(){
+export int get_answer() {
     return 42;
 }
