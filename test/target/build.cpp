@@ -17,9 +17,9 @@ int main(int argc, char* argv[]) {
     update_self(argc, argv);
 
     Target target("target");
+    Unit   main("main.cpp");
+    Unit   answer("answer.cpp");
 
-    Translation_Unit main("main.cpp");
-    Translation_Unit answer("answer.cpp");
     target.add_translation_units({main, answer});
 
     Clang clang;

@@ -13,6 +13,7 @@ Just call shell Command and other exec,may be add more feature.
 include file and write build command.
 
 ```cpp
+//build.cpp
 #include "csc.hpp"
 
 int main(int argc, char** argv) {
@@ -28,3 +29,19 @@ int main(int argc, char** argv) {
     }
 }
 ```
+
+```cpp
+//main.cpp
+#include <iostream>
+
+int main(int argc, char** argv) {
+    std::cout<<"Hello,World!\n";
+    return 0;
+}
+```
+
+> clang++ -std=c++23 build.cpp -o build
+
+> ./build
+
+> ./main

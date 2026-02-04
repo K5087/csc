@@ -18,12 +18,14 @@
 #endif // _Win32
 
 namespace csc {
-using Dir  = std::filesystem::path;
-using Path = std::filesystem::path;
+using string      = std::string;
+using string_view = std::string_view;
+using Dir         = std::filesystem::path;
+using Path        = std::filesystem::path;
 
 template <typename T>
-using Result = std::expected<T, std::string>;
-using Reason = std::unexpected<std::string>;
+using Result = std::expected<T, string>;
+using Reason = std::unexpected<string>;
 
 namespace OS {
 enum class System {
@@ -44,7 +46,7 @@ inline Result<std::vector<char>> ReadFile(const Path& path) {
     std::ifstream file(path, std::ios::ate | std::ios::binary);
 
     if (!file) {
-        return Reason("failed to open file!");
+        return Reason("failed to open file! [\"" + path.string() + "\"]");
     }
     file.seekg(0, std::ios::end);
     size_t size = file.tellg();
@@ -60,9 +62,9 @@ inline Result<std::vector<char>> ReadFile(const Path& path) {
 
 namespace predefine {
 #if defined __clang__
-static std::string current_compiler = "clang++";
+static string current_compiler = "clang++";
 #elif define __GUN__
-static std::string current_compiler = "gcc";
+static string current_compiler = "gcc";
 #endif // __clang__
 
 } // namespace predefine
@@ -85,7 +87,7 @@ enum class Color {
     white,
 };
 
-inline std::string get_ansi_color(Color color) {
+inline string get_ansi_color(Color color) {
     switch (color) {
         case Color::red: return "31";
         case Color::green: return "32";
@@ -98,9 +100,9 @@ inline std::string get_ansi_color(Color color) {
     }
 }
 
-inline std::string colorize_str(const std::string_view str, Color color) {
+inline string colorize_str(const std::string_view str, Color color) {
     if (OS::is_terminal()) {
-        std::string result;
+        string result;
         result.reserve(str.size() + 16);
         result += "\x1b[";
         result += get_ansi_color(color);
@@ -109,16 +111,16 @@ inline std::string colorize_str(const std::string_view str, Color color) {
         result += "\x1b[0m";
         return result;
     } else {
-        return std::string(str);
+        return string(str);
     }
 }
 
-inline void log_color(Level level, const std::string& fmt, va_list list) {
+inline void log_color(Level level, const string& fmt, va_list list) {
     switch (level) {
-        case Level::code: std::fprintf(stderr, "%s", colorize_str("[code]", Color::blue).c_str()); break;
-        case Level::info: std::fprintf(stderr, "%s", colorize_str("[info]", Color::green).c_str()); break;
-        case Level::warn: std::fprintf(stderr, "%s", colorize_str("[warn]", Color::yellow).c_str()); break;
-        case Level::erro: std::fprintf(stderr, "%s", colorize_str("[erro]", Color::red).c_str()); break;
+        case Level::code: std::fprintf(stderr, "%s", colorize_str("[code] ", Color::blue).c_str()); break;
+        case Level::info: std::fprintf(stderr, "%s", colorize_str("[info] ", Color::green).c_str()); break;
+        case Level::warn: std::fprintf(stderr, "%s", colorize_str("[warn] ", Color::yellow).c_str()); break;
+        case Level::erro: std::fprintf(stderr, "%s", colorize_str("[erro] ", Color::red).c_str()); break;
     }
     std::vfprintf(stderr, fmt.c_str(), list);
     std::fprintf(stderr, "\n");
@@ -130,10 +132,10 @@ inline void log_color(Level level, const std::string& fmt, va_list list) {
 #define ERRO log_impl::Level::erro
 } // namespace log_impl
 
-inline void log(log_impl::Level level, std::string_view fmt, ...) {
+inline void log(log_impl::Level level, string_view fmt, ...) {
     va_list list;
     va_start(list, fmt);
-    log_color(level, std::string(fmt), list);
+    log_color(level, string(fmt), list);
     va_end(list);
 }
 
@@ -142,16 +144,34 @@ struct DepInfo {
     std::vector<Path> depends;
     DepInfo() = default;
 
-    DepInfo(std::vector<std::string>& target, std::vector<std::string>& depend) : targets(target.begin(), target.end()), depends(depend.begin(), depend.end()) {
+    DepInfo(std::vector<string>& target, std::vector<std::string>& depend) : targets(target.begin(), target.end()), depends(depend.begin(), depend.end()) {
     };
 };
+enum class Unit_Type {
+    header,
+    source,
+    module,
+    unknown,
+};
 
-class Translation_Unit {
+class Unit {
 public:
-    Path path;
-    Path obj;
+    Path      path;
+    Path      obj;
+    Unit_Type type;
 
-    Translation_Unit(Path path) : path(path) {};
+    Unit(Path path) : path(path) {
+        string extension = path.extension().string();
+        if (extension == ".h") {
+            type = Unit_Type::header;
+        } else if (extension == ".cpp") {
+            type = Unit_Type::header;
+        } else if (extension == ".cppm") {
+            type = Unit_Type::header;
+        } else {
+            type = Unit_Type::unknown;
+        }
+    };
 };
 
 class Cmd {
@@ -172,12 +192,12 @@ public:
 
     void Clear() { params.clear(); };
 
-    std::string GetCommandStr() const {
-        std::string Command;
+    string GetCommandStr() const {
+        string Command;
         for (size_t i = 0; i < params.size(); i++) {
-            std::string_view arg = params[i];
+            string_view arg = params[i];
             if (i > 0) Command.append(" ");
-            if (!arg.empty() && std::string_view::npos == arg.find_first_of(" \t\n\v\"")) {
+            if (!arg.empty() && string_view::npos == arg.find_first_of(" \t\n\v\"")) {
                 Command.append(arg);
             } else {
                 Command.append("\"");
@@ -211,14 +231,16 @@ public:
     }
 
 private:
-    std::vector<std::string> params;
+    std::vector<string> params;
 
 private:
     void AppendDispatch(const char* s) { params.emplace_back(s); }
 
-    void AppendDispatch(const std::string& s) { params.emplace_back(s); }
+    void AppendDispatch(const string& s) { params.emplace_back(s); }
 
-    void AppendDispatch(std::string_view s) { params.emplace_back(s); }
+    void AppendDispatch(const string&& s) { params.emplace_back(std::move(s)); }
+
+    void AppendDispatch(string_view s) { params.emplace_back(s); }
 
     void AppendDispatch(const Path& p) {
         params.emplace_back(p.generic_string());
@@ -229,7 +251,7 @@ private:
         for (auto& path : paths) { params.emplace_back(path.generic_string()); }
     }
 
-    void AppendDispatch(const std::vector<std::string>& paths) {
+    void AppendDispatch(const std::vector<string>& paths) {
         params.reserve(params.size() + paths.size());
         for (auto& path : paths) { params.emplace_back(path); }
     }
@@ -246,7 +268,7 @@ public:
 
 inline bool run_cmd(const Cmd& cmd, Cmdopt opt = Cmdopt()) {
     if (cmd.empty()) {
-        log(ERRO, "Could not run empty command");
+        log(ERRO, "Could not run empty command!");
         return false;
     }
     // log(CODE, cmd.GetCommandStr());
@@ -260,13 +282,15 @@ inline bool run_cmd(const Cmd& cmd, Cmdopt opt = Cmdopt()) {
         return false;
     }
     WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD ec;
+    GetExitCodeProcess(pi.hProcess, &ec);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-    return true;
+    return ec == 0;
 #else
     pid_t cpid = fork();
     if (cpid < 0) {
-        log(ERRO, "Coull not fork child process: %s", std::strerror(errno));
+        log(ERRO, "Coull not fork child process: %s!", std::strerror(errno));
         return false;
     }
     if (cpid == 0) {
@@ -292,65 +316,135 @@ public:
     Compiler(Path path) : path(path) {};
 
 public:
-    virtual bool generate_depfile(const Path& input, const Path output, const std::vector<std::string>& options, std::optional<Path> target) {
-        std::vector<std::string> target_option = target ? std::vector<std::string>{"-MT", target->string()} : std::vector<std::string>{};
-
-        Cmd cmd(path, "-MMD", "-MF", output, input, target_option, options);
-        return run_cmd(cmd);
-    }
-
-    virtual bool compile_unit(const Path& input, const Path output, const std::vector<std::string> options) {
-        Cmd cmd(path, "-c", input, "-o", output, options);
-        return run_cmd(cmd);
-    }
-
+    // virtual bool generate_depfile(const Path& input, const Path& output, const std::vector<string>& options, std::optional<Path> target) {
+    //     std::vector<string> target_option = target ? std::vector<std::string>{"-MT", target->string()} : std::vector<std::string>{};
+    //
+    //     Cmd cmd(path, "-MMD", "-MF", output, input, target_option, options);
+    //     return run_cmd(cmd);
+    // }
+    //
+    // virtual bool compile_unit(const Path& input, const Path& output, const std::vector<string>& options) {
+    //     Cmd cmd(path, "-c", input, "-o", output, options);
+    //     return run_cmd(cmd);
+    // }
+    //
     virtual bool link_target(const Path& output, const std::vector<Path>& depfiles) {
         Cmd cmd(path, depfiles, "-o", output);
         return run_cmd(cmd);
     }
 
-    virtual bool compile_and_gendep_unit(const Path& input, const Path obj, const Path& dep, const std::vector<std::string>& options) {
-        Cmd cmd(path, "-c", input, "-o", obj, "-MMD", "-MF", dep, "-MT", obj, options);
+    //
+    // virtual bool compile_and_gendep_unit(const Path& input, const Path& obj, const Path& dep, const std::vector<string>& options) {
+    //     Cmd cmd(path, "-c", input, "-o", obj, "-MMD", "-MF", dep, "-MT", obj, options);
+    //     return run_cmd(cmd);
+    // }
+    //
+    // virtual bool compile_module(const Path& input, const Path& output, const std::vector<string>& options) {
+    //     Cmd cmd(path, "--precompile", "-o", output);
+    //     return run_cmd(cmd);
+    // }
+
+    virtual Cmd get_generate_depfile_cmd(const Path& input, const Path& output, const std::vector<string>& options, std::optional<Path> target) {
+        std::vector<string> target_option = target ? std::vector<std::string>{"-MT", target->string()} : std::vector<std::string>{};
+
+        return {path, "-MMD", "-MF", output, input, target_option, options};
+    }
+
+    virtual Cmd get_compile_unit_cmd(const Path& input, const Path& output, const std::vector<string>& options) {
+        return {path, "-c", input, "-o", output, options};
+    }
+
+    virtual Cmd get_link_target_cmd(const Path& output, const std::vector<Path>& depfiles) {
+        return {path, depfiles, "-o", output};
+    }
+
+    virtual Cmd get_compile_and_gendep_unit_cmd(const Path& input, const Path& obj, const Path& dep, const std::vector<string>& options) {
+        return {path, "-c", input, "-o", obj, "-MMD", "-MF", dep, "-MT", obj, options};
+    }
+
+    virtual Cmd get_compile_module_cmd(const Path& input, const Path& output, const std::vector<string>& options) {
+        return {path, "--precompile", "-o", output};
+    }
+
+private:
+    // clang-scan-deps --format=p1689 --clang++  -c main.cpp -o main.o
+
+private:
+};
+
+class Clang : public Compiler {
+public:
+    Clang() : Compiler("clang++") {};
+    Clang(const Path& path) : Compiler(path) {};
+
+    std::vector<string> compile_module_option(const Path& uints, const Path& targetdir = ".") {
+        Path targetpath = targetdir / uints.filename().string();
+        targetpath.replace_extension(".pcm");
+        return {uints.string(), "--precompile", "-o", targetpath.string()};
+    }
+
+private:
+};
+
+inline Compiler find_compiler(const Dir& dir) {
+    Path exe = dir / "bin" / "clang++";
+    if (std::filesystem::exists(exe)) {
+        return Clang(exe);
+    }
+    throw std::runtime_error("undetected compiler.");
+}
+
+class ToolChain {
+public:
+    Dir      base;
+    Compiler compiler;
+
+public:
+    ToolChain() = delete;
+
+protected:
+    ToolChain(const Path& path, Compiler exe) : base(path), compiler(std::move(exe)) {};
+
+    virtual Dir  get_stdlib_dir() const;
+    virtual bool scan_module_dep(const Path& input, const std::vector<string>& compile_command);
+
+private:
+};
+
+class LLVM_MinGW : public ToolChain {
+public:
+    LLVM_MinGW(const Dir& dir) : ToolChain(dir, find_compiler(dir)) {};
+
+    virtual Dir get_stdlib_dir() const override {
+        return base / "share" / "libc++" / "v1";
+    }
+
+    virtual bool scan_module_dep(const Path& input, const std::vector<string>& compile_command) override {
+        Cmd cmd(base / "bin" / "clang-scan-deps", "--format=p1689", "--", compile_command);
         return run_cmd(cmd);
     }
 
 private:
 };
 
-class ToolChain {
-public:
-    Dir base;
-    Dir bin;
-
-public:
-    virtual Dir get_stdlib_dir() const = 0;
-};
-
-class Clang : public Compiler {
-public:
-    Clang() : Compiler("clang++") {};
-
-    std::vector<std::string> compile_module_option(const Path& uints, const Path& targetdir = ".") {
-        Path targetpath = targetdir / uints.filename().string();
-        targetpath.replace_extension(".pcm");
-        return {uints.string(), "--precompile", "-o", targetpath.string()};
-    }
-
-    std::vector<std::string> compile_stdmodule_option(const ToolChain& toolchain, const Path& targetdir = ".") {
-        Path targetpath = targetdir / "std.pcm";
-        return {toolchain.get_stdlib_dir().string(), "--precompile", "-o", targetpath.string()};
-    }
-
-private:
-};
 } // namespace ToolChain
+
+// TODO: implenment it
+inline ToolChain::ToolChain find_ToolChain(const Dir& dir) {
+    Path path = dir / "bin" / "clang++.exe";
+    if (std::filesystem::exists(path)) {
+        return ToolChain::LLVM_MinGW(dir);
+    }
+
+    throw std::runtime_error("unknown toolchain");
+}
 
 inline std::error_code redirect_stream(const std::filesystem::path& path) {
     std::error_code ec;
 #ifdef _WIN32
 
 #else
-    log(ERRO, "could not open file %s: %s", path.c_str(), std::strerror(errno));
+    log(ERRO, "could not open file %s: %s!", path.c_str(), std::strerror(errno));
 #endif
     return ec;
 }
@@ -364,7 +458,7 @@ public:
     // TODO: maybe string_view better
     std::unordered_map<Path, size_t> unit_map;
 
-    void add_depinfo(const DepInfo& dep_info, const Translation_Unit& unit) {
+    void add_depinfo(const DepInfo& dep_info, const Unit& unit) {
         size_t unit_index = find_or_add(unit.path);
 
         dependences[unit_index].reserve(dep_info.depends.size());
@@ -374,7 +468,7 @@ public:
         }
     }
 
-    std::vector<Path> get_deps(const Translation_Unit& unit) {
+    std::vector<Path> get_deps(const Unit& unit) {
         auto it = unit_map.find(unit.path);
         if (it == unit_map.end()) { return {}; }
 
@@ -413,7 +507,6 @@ inline bool check_rebuild(const Path& output, const std::vector<Path>& inputs) {
             return true;
         }
     }
-
     return false;
 }
 
@@ -460,8 +553,8 @@ inline std::optional<DepInfo> parse_dep_file(const Path& dep_path) {
     }
 
     // not good
-    auto        data = result.value();
-    std::string file;
+    auto   data = result.value();
+    string file;
     file.reserve(data.size());
 
     for (size_t i = 0; i < data.size(); ++i) {
@@ -481,7 +574,7 @@ inline std::optional<DepInfo> parse_dep_file(const Path& dep_path) {
         file.push_back(c);
     }
 
-    auto find_unescaped_colon = [](std::string_view s) {
+    auto find_unescaped_colon = [](string_view s) {
         bool esc = false;
         for (size_t i = 0; i < s.size(); ++i) {
             if (esc) {
@@ -494,17 +587,17 @@ inline std::optional<DepInfo> parse_dep_file(const Path& dep_path) {
             }
             if (s[i] == ':') return i;
         }
-        return std::string_view::npos;
+        return string_view::npos;
     };
 
-    auto tokenize = [](std::string_view s) {
-        auto                     is_ws = [](unsigned char c) { return std::isspace(c); };
-        std::vector<std::string> out;
-        size_t                   i = 0;
+    auto tokenize = [](string_view s) {
+        auto                is_ws = [](unsigned char c) { return std::isspace(c); };
+        std::vector<string> out;
+        size_t              i = 0;
         while (i < s.size()) {
             while (i < s.size() && is_ws((unsigned char)s[i])) ++i;
             if (i >= s.size()) break;
-            std::string tok;
+            string tok;
             while (i < s.size() && !is_ws((unsigned char)s[i])) {
                 if (s[i] == '\\' && i + 1 < s.size()) {
                     ++i;
@@ -517,9 +610,9 @@ inline std::optional<DepInfo> parse_dep_file(const Path& dep_path) {
         return out;
     };
 
-    size_t           colon = find_unescaped_colon(file);
-    std::string_view lhs(file.data(), colon);
-    std::string_view rhs(file.data() + colon + 1, file.size() - colon - 1);
+    size_t      colon = find_unescaped_colon(file);
+    string_view lhs(file.data(), colon);
+    string_view rhs(file.data() + colon + 1, file.size() - colon - 1);
 
     auto targets = tokenize(lhs);
     auto deps    = tokenize(rhs);
@@ -527,7 +620,8 @@ inline std::optional<DepInfo> parse_dep_file(const Path& dep_path) {
 }
 
 // check success?
-inline bool check_dep_file(const Translation_Unit& unit, const Path& dep_path, const Path& obj, Graph* graph = nullptr) {
+inline bool check_dep_file(const Unit& unit, const Path& dep_path, const Path& obj, Graph* graph = nullptr) {
+    if (!std::filesystem::exists(dep_path)) { return false; }
     auto result = parse_dep_file(dep_path);
     if (!result) {
         return false;
@@ -537,10 +631,10 @@ inline bool check_dep_file(const Translation_Unit& unit, const Path& dep_path, c
         graph->add_depinfo(dep_info, unit);
     }
 
-    return check_rebuild(obj, dep_info.depends);
+    return !check_rebuild(obj, dep_info.depends);
 }
 
-inline bool compile_translation_unit(ToolChain::Compiler& compiler, Translation_Unit& unit, const Dir& out_dir = "build", std::vector<std::string> options = {}, Graph* graph = nullptr) {
+inline bool compile_translation_unit(ToolChain::Compiler& compiler, Unit& unit, const Dir& out_dir = "build", std::vector<string> options = {}, Graph* graph = nullptr) {
     Path obj = out_dir / unit.path.filename();
     obj.replace_extension(".o");
     Path dep = obj;
@@ -549,22 +643,28 @@ inline bool compile_translation_unit(ToolChain::Compiler& compiler, Translation_
 
     // TODO: generate_dependence maybe different by options,should add cache to diff
 
-    bool need_rebuild = check_dep_file(unit, dep, obj, graph);
+    bool need_rebuild = !std::filesystem::exists(obj) || !check_dep_file(unit, dep, obj, graph);
     if (!need_rebuild) {
         return true;
     }
 
-    log(CODE, "%s need to rebuild", unit.path.string().c_str());
+    log(INFO, "%s need to rebuild.", unit.path.string().c_str());
     bool result = false;
     std::filesystem::create_directories(out_dir);
-    if (graph) {
-        result = compiler.compile_and_gendep_unit(unit.path, obj, dep, options);
+    Cmd cmd;
+
+    if (unit.type == Unit_Type::module) {
+        cmd = compiler.get_compile_module_cmd(unit.path, obj, options);
     } else {
-        result = compiler.compile_unit(unit.path, obj, options);
+        if (graph) {
+            cmd = compiler.get_compile_and_gendep_unit_cmd(unit.path, obj, dep, options);
+        } else {
+            cmd = compiler.get_compile_unit_cmd(unit.path, obj, options);
+        }
     }
 
     // log(CODE, cmd.GetCommandStr());
-    return result;
+    return run_cmd(cmd);
 }
 
 } // namespace build
@@ -593,22 +693,22 @@ class Target {
     };
 
 public:
-    Dir         out_dir = std::filesystem::current_path() / "build";
-    Type        type    = Type::exe;
-    std::string name    = "default target";
+    Dir    out_dir = std::filesystem::current_path() / "build";
+    Type   type    = Type::exe;
+    string name    = "default target";
 
     CppVersion   version      = CppVersion::cpp23;
     Architecture architecture = Architecture::x86_64;
 
-    std::set<std::string>         options;
-    std::vector<Translation_Unit> units;
+    std::set<string>  options;
+    std::vector<Unit> units;
 
     build::Graph graph;
 
 public:
-    Target(const std::string& str) : name{str} {};
+    Target(const string& str) : name{str} {};
 
-    void add_translation_units(const std::vector<Translation_Unit>& files) { units.append_range(files); };
+    void add_translation_units(const std::vector<Unit>& files) { units.append_range(files); };
 
     Path get_target_path(const Dir& out_dir) const {
         return out_dir / (name + ".exe");
@@ -623,49 +723,49 @@ public:
         return objs;
     }
 
-    std::vector<std::string> get_options() const {
+    std::vector<string> get_options() const {
         return {options.begin(), options.end()};
     }
 
-    void add_options(std::string_view str) {
-        options.insert(std::string(str));
+    void add_options(string_view str) {
+        options.insert(string(str));
     }
 };
 
 class Project {
 public:
-    std::string name;
-    Dir         root;
-    Dir         build;
+    string name;
+    Dir    root;
+    Dir    build;
 
     std::vector<Target> targets;
 
 public:
     Project() : name("default project") {};
-    Project(const std::string& str) : name(str), root(std::filesystem::current_path()), build(root / "build") {};
+    Project(const string& str) : name(str), root(std::filesystem::current_path()), build(root / "build") {};
 
     Target& add_target(Target&& target) noexcept {
         targets.emplace_back(std::move(target));
         return targets.back();
     };
 
-    Target& operator[](std::string_view key) {
+    Target& operator[](string_view key) {
         for (auto& target : targets) {
             if (target.name == key) {
                 return target;
             }
         }
-        log(ERRO, "failed to get %s from project", key);
+        log(ERRO, "failed to get %s from project.", key);
         std::abort();
     }
 
-    const Target& operator[](std::string_view key) const noexcept {
+    const Target& operator[](string_view key) const noexcept {
         for (auto& target : targets) {
             if (target.name == key) {
                 return target;
             }
         }
-        log(ERRO, "failed to get %s from project", key);
+        log(ERRO, "failed to get %s from project.", key);
         std::abort();
     }
 };
@@ -674,14 +774,17 @@ inline bool build_target(ToolChain::Compiler& compiler, Target& target, const Di
     for (auto& unit : target.units) {
         Dir relative = std::filesystem::relative(unit.path.parent_path(), root);
         Dir out_dir  = (build_dir / relative).lexically_normal();
+
         if (!build::compile_translation_unit(compiler, unit, out_dir, target.get_options(), &target.graph)) {
-            log(ERRO, "compile %s failed", unit.path.generic_string().c_str());
-            continue;
+            log(ERRO, "compile %s failed.", unit.path.generic_string().c_str());
+            // continue;
+            return false;
         }
     }
 
     // Path target_path = target.get_target_path(build_dir);
     // build::check_rebuild(target_path, )
+
     return compiler.link_target(target.get_target_path(build_dir), target.obj_files());
 }
 
