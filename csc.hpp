@@ -139,39 +139,153 @@ inline void log(log_impl::Level level, string_view fmt, ...) {
     va_end(list);
 }
 
+inline void logc(string_view fmt, ...) {
+    va_list list;
+    va_start(list, fmt);
+    log_color(CODE, string(fmt), list);
+    va_end(list);
+}
+
+inline void logi(string_view fmt, ...) {
+    va_list list;
+    va_start(list, fmt);
+    log_color(INFO, string(fmt), list);
+    va_end(list);
+}
+
+inline void logw(string_view fmt, ...) {
+    va_list list;
+    va_start(list, fmt);
+    log_color(WARN, string(fmt), list);
+    va_end(list);
+}
+
+inline void loge(string_view fmt, ...) {
+    va_list list;
+    va_start(list, fmt);
+    log_color(ERRO, string(fmt), list);
+    va_end(list);
+}
+
+inline bool is_outdated(const Path& output, const std::vector<Path>& inputs) {
+    using std::filesystem::last_write_time;
+    BOOL bSuccess;
+
+    if (!std::filesystem::exists(output)) { return true; }
+    auto ouput_time = last_write_time(output);
+
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        auto input_time = last_write_time(inputs[i]);
+
+        if (input_time > ouput_time) {
+            return true;
+        }
+    }
+    return false;
+}
+
 struct DepInfo {
     std::vector<Path> targets;
     std::vector<Path> depends;
     DepInfo() = default;
 
-    DepInfo(std::vector<string>& target, std::vector<std::string>& depend) : targets(target.begin(), target.end()), depends(depend.begin(), depend.end()) {
+    DepInfo(std::vector<string>& target, std::vector<std::string>& depend) :
+    targets(target.begin(), target.end()),
+    depends(depend.begin(), depend.end()) {
     };
 };
-enum class Unit_Type {
-    header,
-    source,
-    module,
-    unknown,
-};
+
+inline std::optional<DepInfo> parse_dep_file(const Path& dep_path) {
+    Result<std::vector<char>> result = OS::ReadFile(dep_path);
+    if (!result) {
+        log(WARN, result.error());
+        return std::nullopt;
+    }
+
+    // not good
+    auto   data = result.value();
+    string file;
+    file.reserve(data.size());
+
+    for (size_t i = 0; i < data.size(); ++i) {
+        char c = data[i];
+
+        if (c == '\\') {
+            if (i + 1 < data.size() && data[i + 1] == '\n') {
+                ++i;
+                continue;
+            }
+            if (i + 2 < data.size() && data[i + 1] == '\r' && data[i + 2] == '\n') {
+                i += 2;
+                continue;
+            }
+        }
+
+        file.push_back(c);
+    }
+
+    auto find_unescaped_colon = [](string_view s) {
+        bool esc = false;
+        for (size_t i = 0; i < s.size(); ++i) {
+            if (esc) {
+                esc = false;
+                continue;
+            }
+            if (s[i] == '\\') {
+                esc = true;
+                continue;
+            }
+            if (s[i] == ':') return i;
+        }
+        return string_view::npos;
+    };
+
+    auto tokenize = [](string_view s) {
+        auto                is_ws = [](unsigned char c) { return std::isspace(c); };
+        std::vector<string> out;
+        size_t              i = 0;
+        while (i < s.size()) {
+            while (i < s.size() && is_ws((unsigned char)s[i])) ++i;
+            if (i >= s.size()) break;
+            string tok;
+            while (i < s.size() && !is_ws((unsigned char)s[i])) {
+                if (s[i] == '\\' && i + 1 < s.size()) {
+                    ++i;
+                    tok.push_back(s[i++]);
+                } else
+                    tok.push_back(s[i++]);
+            }
+            out.push_back(std::move(tok));
+        }
+        return out;
+    };
+
+    size_t      colon = find_unescaped_colon(file);
+    string_view lhs(file.data(), colon);
+    string_view rhs(file.data() + colon + 1, file.size() - colon - 1);
+
+    auto targets = tokenize(lhs);
+    auto deps    = tokenize(rhs);
+    return DepInfo{targets, deps};
+}
 
 class Unit {
 public:
-    Path      path;
-    Path      obj;
-    Unit_Type type;
+    Path path;
+    Path obj;
 
-    Unit(Path path) : path(path) {
-        string extension = path.extension().string();
-        if (extension == ".h") {
-            type = Unit_Type::header;
-        } else if (extension == ".cpp") {
-            type = Unit_Type::header;
-        } else if (extension == ".cppm") {
-            type = Unit_Type::header;
-        } else {
-            type = Unit_Type::unknown;
-        }
-    };
+    Unit(Path path) : path(path) {};
+
+    constexpr virtual bool is_module() const noexcept {
+        return false;
+    }
+};
+
+class Module : public Unit {
+public:
+    constexpr virtual bool is_module() const noexcept {
+        return false;
+    }
 };
 
 class Cmd {
@@ -309,101 +423,93 @@ enum class CompilerType {
 
 class Compiler {
 public:
-    Path path;
+    Path exe;
 
 public:
     Compiler() = delete;
-    Compiler(Path path) : path(path) {};
+    Compiler(Path path) : exe(path) {};
 
 public:
-    // virtual bool generate_depfile(const Path& input, const Path& output, const std::vector<string>& options, std::optional<Path> target) {
-    //     std::vector<string> target_option = target ? std::vector<std::string>{"-MT", target->string()} : std::vector<std::string>{};
-    //
-    //     Cmd cmd(path, "-MMD", "-MF", output, input, target_option, options);
-    //     return run_cmd(cmd);
-    // }
-    //
-    // virtual bool compile_unit(const Path& input, const Path& output, const std::vector<string>& options) {
-    //     Cmd cmd(path, "-c", input, "-o", output, options);
-    //     return run_cmd(cmd);
-    // }
-    //
     virtual bool link_target(const Path& output, const std::vector<Path>& depfiles) {
-        Cmd cmd(path, depfiles, "-o", output);
+        Cmd cmd(exe, depfiles, "-o", output);
         return run_cmd(cmd);
     }
 
-    //
-    // virtual bool compile_and_gendep_unit(const Path& input, const Path& obj, const Path& dep, const std::vector<string>& options) {
-    //     Cmd cmd(path, "-c", input, "-o", obj, "-MMD", "-MF", dep, "-MT", obj, options);
-    //     return run_cmd(cmd);
-    // }
-    //
-    // virtual bool compile_module(const Path& input, const Path& output, const std::vector<string>& options) {
-    //     Cmd cmd(path, "--precompile", "-o", output);
-    //     return run_cmd(cmd);
-    // }
-
-    virtual Cmd get_generate_depfile_cmd(const Path& input, const Path& output, const std::vector<string>& options, std::optional<Path> target) {
-        std::vector<string> target_option = target ? std::vector<std::string>{"-MT", target->string()} : std::vector<std::string>{};
-
-        return {path, "-MMD", "-MF", output, input, target_option, options};
-    }
+    virtual std::vector<std::string> compile_flag(const Path& unit)                   = 0;
+    virtual std::vector<std::string> out_flag(const Path& unit)                       = 0;
+    virtual std::vector<std::string> dep_flag(const Path& unit, const Path& obj = "") = 0;
 
     virtual Cmd get_compile_unit_cmd(const Path& input, const Path& output, const std::vector<string>& options) {
-        return {path, "-c", input, "-o", output, options};
+        return {exe, "-c", input, "-o", output, options};
     }
 
     virtual Cmd get_link_target_cmd(const Path& output, const std::vector<Path>& depfiles) {
-        return {path, depfiles, "-o", output};
+        return {exe, depfiles, "-o", output};
     }
 
     virtual Cmd get_compile_and_gendep_unit_cmd(const Path& input, const Path& obj, const Path& dep, const std::vector<string>& options) {
-        return {path, "-c", input, "-o", obj, "-MMD", "-MF", dep, "-MT", obj, options};
+        return {exe, "-c", input, "-o", obj, "-MMD", "-MF", dep, "-MT", obj, options};
     }
 
     virtual Cmd get_compile_module_cmd(const Path& input, const Path& output, const std::vector<string>& options) {
-        return {path, "--precompile", "-o", output};
+        return {exe, "--precompile", "-o", output};
     }
-
-private:
-    // clang-scan-deps --format=p1689 --clang++  -c main.cpp -o main.o
-
-private:
 };
 
-class Clang : public Compiler {
+class GNU_Compiler : public Compiler {
 public:
-    Clang() : Compiler("clang++") {};
-    Clang(const Path& path) : Compiler(path) {};
+    // GNU_Compiler(const Path& path) : Compiler(path) {};
+    using Compiler::Compiler;
+
+    virtual std::vector<std::string> compile_flag(const Path& unit) {
+        return {"-c", unit.generic_string()};
+    }
+
+    virtual std::vector<std::string> out_flag(const Path& obj) {
+        return {"-o", obj.generic_string()};
+    }
+
+    virtual std::vector<std::string> dep_flag(const Path& dep, const Path& obj = "") {
+        std::vector<std::string> flags = {"-MMD", "-MF", dep.generic_string()};
+        if (!obj.empty()) {
+            flags.push_back("-MT");
+            flags.push_back(obj.generic_string());
+        }
+
+        return flags;
+    }
+};
+
+class Clang : public GNU_Compiler {
+public:
+    using GNU_Compiler::GNU_Compiler;
+    Clang() : GNU_Compiler("clang++") {};
 
     std::vector<string> compile_module_option(const Path& uints, const Path& targetdir = ".") {
         Path targetpath = targetdir / uints.filename().string();
         targetpath.replace_extension(".pcm");
-        return {uints.string(), "--precompile", "-o", targetpath.string()};
+        return {uints.generic_string(), "--precompile", "-o", targetpath.string()};
     }
 
 private:
 };
 
-inline Compiler find_compiler(const Dir& dir) {
+inline std::shared_ptr<Compiler> find_compiler(const Dir& dir) {
     Path exe = dir / "bin" / "clang++";
     if (std::filesystem::exists(exe)) {
-        return Clang(exe);
+        return std::make_shared<Clang>(exe);
     }
     throw std::runtime_error("undetected compiler.");
 }
 
 class ToolChain {
 public:
-    Dir      base;
-    Compiler compiler;
+    Dir base;
 
 public:
     ToolChain() = delete;
 
-protected:
-    ToolChain(const Path& path, Compiler exe) : base(path), compiler(std::move(exe)) {};
+    ToolChain(const Dir& path) : base(path) {};
 
     virtual Dir  get_stdlib_dir() const;
     virtual bool scan_module_dep(const Path& input, const std::vector<string>& compile_command);
@@ -413,7 +519,7 @@ private:
 
 class LLVM_MinGW : public ToolChain {
 public:
-    LLVM_MinGW(const Dir& dir) : ToolChain(dir, find_compiler(dir)) {};
+    using ToolChain::ToolChain;
 
     virtual Dir get_stdlib_dir() const override {
         return base / "share" / "libc++" / "v1";
@@ -493,24 +599,7 @@ private:
     }
 };
 
-inline bool check_rebuild(const Path& output, const std::vector<Path>& inputs) {
-    using std::filesystem::last_write_time;
-    BOOL bSuccess;
-
-    if (!std::filesystem::exists(output)) { return true; }
-    auto ouput_time = last_write_time(output);
-
-    for (size_t i = 0; i < inputs.size(); ++i) {
-        auto input_time = last_write_time(inputs[i]);
-
-        if (input_time > ouput_time) {
-            return true;
-        }
-    }
-    return false;
-}
-
-inline Result<bool> update_self(int argc, char** argv, const Path& source_path, std::vector<Path> other_path = {}) {
+inline Result<bool> update_self(int argc, char** argv, const Path& source_path, const std::vector<Path>& other_path = {}) {
     Path binary_path(argv[0]);
 #ifdef _WIN32
     if (binary_path.extension() != ".exe") {
@@ -522,101 +611,29 @@ inline Result<bool> update_self(int argc, char** argv, const Path& source_path, 
     // bool need_rebuild = check_rebuild(binary_path, {});
     std::vector<Path> check_path = other_path;
     check_path.push_back(source_path);
-    bool need_rebuild = check_rebuild(binary_path, check_path);
+    bool need_rebuild = is_outdated(binary_path, check_path);
 
     if (!need_rebuild) {
         return false;
     }
 
+    logi("build program start update");
     Cmd  compile_cmd;
     Path old_binary_path = binary_path;
     old_binary_path += ".old";
     std::filesystem::rename(binary_path, old_binary_path);
     compile_cmd.Append(predefine::current_compiler, "-std=c++23", "-o", binary_path, source_path);
     if (!run_cmd(compile_cmd)) {
-        return Reason("compile failed");
+        return Reason("compile build script failed");
     }
+    logi("update build program success");
     // std::filesystem::remove(old_binary_path);
     Cmd exec_cmd(binary_path);
     exec_cmd.AppendRange(argc - 1, argv + 1);
     if (!run_cmd(exec_cmd)) {
-        return Reason("exec cmd failed");
+        return Reason("exec new build program failed");
     }
     return true;
-}
-
-inline std::optional<DepInfo> parse_dep_file(const Path& dep_path) {
-    Result<std::vector<char>> result = OS::ReadFile(dep_path);
-    if (!result) {
-        log(WARN, result.error());
-        return std::nullopt;
-    }
-
-    // not good
-    auto   data = result.value();
-    string file;
-    file.reserve(data.size());
-
-    for (size_t i = 0; i < data.size(); ++i) {
-        char c = data[i];
-
-        if (c == '\\') {
-            if (i + 1 < data.size() && data[i + 1] == '\n') {
-                ++i;
-                continue;
-            }
-            if (i + 2 < data.size() && data[i + 1] == '\r' && data[i + 2] == '\n') {
-                i += 2;
-                continue;
-            }
-        }
-
-        file.push_back(c);
-    }
-
-    auto find_unescaped_colon = [](string_view s) {
-        bool esc = false;
-        for (size_t i = 0; i < s.size(); ++i) {
-            if (esc) {
-                esc = false;
-                continue;
-            }
-            if (s[i] == '\\') {
-                esc = true;
-                continue;
-            }
-            if (s[i] == ':') return i;
-        }
-        return string_view::npos;
-    };
-
-    auto tokenize = [](string_view s) {
-        auto                is_ws = [](unsigned char c) { return std::isspace(c); };
-        std::vector<string> out;
-        size_t              i = 0;
-        while (i < s.size()) {
-            while (i < s.size() && is_ws((unsigned char)s[i])) ++i;
-            if (i >= s.size()) break;
-            string tok;
-            while (i < s.size() && !is_ws((unsigned char)s[i])) {
-                if (s[i] == '\\' && i + 1 < s.size()) {
-                    ++i;
-                    tok.push_back(s[i++]);
-                } else
-                    tok.push_back(s[i++]);
-            }
-            out.push_back(std::move(tok));
-        }
-        return out;
-    };
-
-    size_t      colon = find_unescaped_colon(file);
-    string_view lhs(file.data(), colon);
-    string_view rhs(file.data() + colon + 1, file.size() - colon - 1);
-
-    auto targets = tokenize(lhs);
-    auto deps    = tokenize(rhs);
-    return DepInfo{targets, deps};
 }
 
 // check success?
@@ -631,11 +648,12 @@ inline bool check_dep_file(const Unit& unit, const Path& dep_path, const Path& o
         graph->add_depinfo(dep_info, unit);
     }
 
-    return !check_rebuild(obj, dep_info.depends);
+    return !is_outdated(obj, dep_info.depends);
 }
 
 inline bool compile_translation_unit(ToolChain::Compiler& compiler, Unit& unit, const Dir& out_dir = "build", std::vector<string> options = {}, Graph* graph = nullptr) {
-    Path obj = out_dir / unit.path.filename();
+    Path out_name = out_dir / unit.path.filename();
+    Path obj      = out_dir / unit.path.filename();
     obj.replace_extension(".o");
     Path dep = obj;
     dep.replace_extension(".d");
@@ -653,7 +671,7 @@ inline bool compile_translation_unit(ToolChain::Compiler& compiler, Unit& unit, 
     std::filesystem::create_directories(out_dir);
     Cmd cmd;
 
-    if (unit.type == Unit_Type::module) {
+    if (unit.is_module()) {
         cmd = compiler.get_compile_module_cmd(unit.path, obj, options);
     } else {
         if (graph) {
@@ -693,9 +711,10 @@ class Target {
     };
 
 public:
-    Dir    out_dir = std::filesystem::current_path() / "build";
-    Type   type    = Type::exe;
-    string name    = "default target";
+    Dir    root  = ".";
+    Dir    build = "build";
+    Type   type  = Type::exe;
+    string name  = "default_target";
 
     CppVersion   version      = CppVersion::cpp23;
     Architecture architecture = Architecture::x86_64;
@@ -706,11 +725,15 @@ public:
     build::Graph graph;
 
 public:
-    Target(const string& str) : name{str} {};
+    Target(const string& str) :
+    name{str} {};
 
     void add_translation_units(const std::vector<Unit>& files) { units.append_range(files); };
 
-    Path get_target_path(const Dir& out_dir) const {
+    Path get_target_path(const Dir& out_dir = "") const {
+        if (out_dir.empty()) {
+            return build / (name + ".exe");
+        }
         return out_dir / (name + ".exe");
     }
 
@@ -741,8 +764,12 @@ public:
     std::vector<Target> targets;
 
 public:
-    Project() : name("default project") {};
-    Project(const string& str) : name(str), root(std::filesystem::current_path()), build(root / "build") {};
+    Project() :
+    name("default project") {};
+    Project(const string& str) :
+    name(str),
+    root(std::filesystem::current_path()),
+    build(root / "build") {};
 
     Target& add_target(Target&& target) noexcept {
         targets.emplace_back(std::move(target));
@@ -770,10 +797,10 @@ public:
     }
 };
 
-inline bool build_target(ToolChain::Compiler& compiler, Target& target, const Dir& root = ".", const Dir& build_dir = "build") {
+inline bool build_target(ToolChain::Compiler& compiler, Target& target) {
     for (auto& unit : target.units) {
-        Dir relative = std::filesystem::relative(unit.path.parent_path(), root);
-        Dir out_dir  = (build_dir / relative).lexically_normal();
+        Dir relative = std::filesystem::relative(unit.path.parent_path(), target.root);
+        Dir out_dir  = (target.build / relative).lexically_normal();
 
         if (!build::compile_translation_unit(compiler, unit, out_dir, target.get_options(), &target.graph)) {
             log(ERRO, "compile %s failed.", unit.path.generic_string().c_str());
@@ -782,10 +809,16 @@ inline bool build_target(ToolChain::Compiler& compiler, Target& target, const Di
         }
     }
 
-    // Path target_path = target.get_target_path(build_dir);
-    // build::check_rebuild(target_path, )
-
-    return compiler.link_target(target.get_target_path(build_dir), target.obj_files());
+    return compiler.link_target(target.get_target_path(), target.obj_files());
 }
 
+inline void update_self(int argc, char** argv, const Path& source, const std::vector<Path>& others = {}) {
+    auto result = build::update_self(argc, argv, source, others);
+    if (!result) {
+        log(ERRO, result.error());
+    } else {
+        // update success,exit old build
+        if (result.value()) std::exit(0);
+    }
+}
 } // namespace csc
