@@ -18,7 +18,7 @@ include file and write build command.
 
 int main(int argc, char** argv) {
     using namespace csc;
-    Cmd cmd.Append("clang++", "-o", "main", "main.cpp");
+    Cmd cmd("clang++", "-o", "main", "main.cpp");
     run_cmd(cmd);
 }
 ```
