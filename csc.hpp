@@ -12,6 +12,7 @@
     #include <windows.h>
 #else
     #include <errno.h>
+    #include <sys/wait.h>
     #include <unistd.h>
 #endif // _Win32
 
@@ -98,7 +99,6 @@ inline void loge(string_view fmt, ...) {
 
 inline bool is_outdated(const Path& output, const std::vector<Path>& inputs) {
     using std::filesystem::last_write_time;
-    BOOL bSuccess;
 
     if (!std::filesystem::exists(output)) { return true; }
     auto ouput_time = last_write_time(output);
@@ -163,6 +163,16 @@ public:
             }
         }
         return Command;
+    }
+
+    std::vector<char*> GetCommandList() const {
+        std::vector<char*> argv;
+        argv.reserve(params.size() + 1);
+        for (auto& s : params) {
+            argv.push_back(const_cast<char*>(s.c_str()));
+        }
+        argv.push_back(nullptr);
+        return argv;
     }
 
     bool empty() const {
@@ -239,12 +249,7 @@ inline Proc create_proc(const Cmd& cmd, const Cmdopt& opt) {
         return Proc(0);
     }
     if (cpid == 0) {
-        std::vector<char*> argv;
-        argv.reserve(cmd.size() + 1);
-        for (auto& s : cmd) {
-            argv.push_back(const_cast<char*>(s.c_str()));
-        }
-        argv.push_back(nullptr);
+        auto argv = cmd.GetCommandList();
         execvp(argv[0], argv.data());
         perror("execvp");
         _exit(127);
@@ -429,7 +434,10 @@ inline Result<bool> update_self(int argc, char** argv, const Path& source_path, 
         return Reason("compile build script failed");
     }
     logi("update build program success");
-    // std::filesystem::remove(old_binary_path);
+#ifdef _WIN32
+#else
+    std::filesystem::remove(old_binary_path);
+#endif
     Cmd exec_cmd(binary_path);
     exec_cmd.AppendRange(argc - 1, argv + 1);
     if (!run_cmd(exec_cmd)) {
