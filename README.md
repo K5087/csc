@@ -18,15 +18,8 @@ include file and write build command.
 
 int main(int argc, char** argv) {
     using namespace csc;
-    Cmd cmd;
-    try {
-        cmd.Append("clang++", "-o", "main", "main.cpp");
-        csc::run_cmd(cmd);
-
-    } catch (const std::exception& e) {
-        csc_log(CSC_ERRO, e.what());
-        return 1;
-    }
+    Cmd cmd.Append("clang++", "-o", "main", "main.cpp");
+    run_cmd(cmd);
 }
 ```
 
@@ -45,5 +38,3 @@ int main(int argc, char** argv) {
 > ./build
 
 > ./main
-
-current branch stop devlopment,new is in dev branch.
