@@ -230,10 +230,12 @@ static std::counting_semaphore<> sem(std::thread::hardware_concurrency() + 1);
 
 // create a process to run command
 inline Proc create_proc(const Cmd& cmd, const Cmdopt& opt) {
+    auto in = opt.in;
 #ifdef _WIN32
-    STARTUPINFO         si = {sizeof(si)};
+    STARTUPINFO         si = {};
     PROCESS_INFORMATION pi;
 
+    si.cb       = sizeof(si);
     BOOL result = CreateProcess(NULL, cmd.GetCommandStr().data(), NULL, NULL, TRUE,
                                 0, NULL, NULL, &si, &pi);
     if (!result) {
