@@ -17,15 +17,17 @@ endif()
 
 set(SOURCE_DIR ${PROJECT_SOURCE_DIR}/src/${PLATFORM_NAME})
 
-file(
-    GLOB_RECURSE SOURCE_FILE
-    ${PROJECT_SOURCE_DIR}/src/common/*.cpp
-    ${SOURCE_DIR}/*.cpp
-)
+set(RSC_DIR ${SOURCE_DIR}/rsc)
+set(RSC_SOURCES src/main.cpp src/common/rsc/rsc.cpp)
+set(RSC_TEST_SOURCES rsc_test.cpp src/common/rsc/rsc.cpp)
+
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/common/log)
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/common/cmd)
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/common/argp)
+add_subdirectory(${PROJECT_SOURCE_DIR}/src/common/csc)
 
-add_executable(csc src/main.cpp)
-target_link_libraries(csc PRIVATE log argp cmd)
+add_executable(rsc ${RSC_SOURCES})
+add_executable(rsc_test ${RSC_TEST_SOURCES})
+target_link_libraries(rsc PRIVATE log argp cmd csc)
+target_link_libraries(rsc_test PRIVATE log argp cmd csc)

@@ -8,8 +8,13 @@
 
 namespace cmd {
 
-static std::vector<impl::Proc>   procs;
+static std::vector<impl::Proc> procs;
 static std::counting_semaphore<> sem(std::thread::hardware_concurrency() + 1);
+#ifdef _WIN32
+    #define NULL_PROC nullptr
+#else
+    #define NULL_PROC 0
+#endif // _WIN32
 
 namespace impl {
 
@@ -28,10 +33,10 @@ bool check_procs() {
 }
 } // namespace impl
 
-std::optional<int> run_cmd(const Cmd& cmd, Opt opt) noexcept {
+Ret run_cmd(const Cmd& cmd, Opt opt) noexcept {
     if (cmd.empty()) {
         loge("Could not run empty command");
-        return std::nullopt;
+        return {NULL_PROC, std::nullopt};
     }
 
     impl::check_procs();
@@ -46,18 +51,24 @@ std::optional<int> run_cmd(const Cmd& cmd, Opt opt) noexcept {
 
     if (!proc) {
         sem.release();
-        return std::nullopt;
+        return {NULL_PROC, std::nullopt};
     }
 
     if (opt.wait_return) {
         auto ret = impl::wait_proc(proc);
         sem.release();
-        return ret;
+        return {proc, ret};
     } else {
         procs.push_back(proc);
     }
 
-    return 0;
+    return {proc, 0};
+}
+
+void wait_procs(std::vector<Ret>& rets) {
+    for (auto& ret : rets) {
+        ret.value = impl::wait_proc(ret.proc);
+    }
 }
 
 } // namespace cmd

@@ -23,6 +23,8 @@ void log(Level level, const char* fmt, ...);
 
 } // namespace logger
 
+void log(const char* fmt, ...);
+
 void logc(const char* fmt, ...);
 
 void logi(const char* fmt, ...);
