@@ -31,7 +31,8 @@ void Target::AddDepends(std::vector<std::shared_ptr<Target>>& targets) {
     deps.append_range(targets);
 }
 
-void Target::AddDepends(std::initializer_list<std::shared_ptr<Target>> targets) {
+void Target::AddDepends(
+    std::initializer_list<std::shared_ptr<Target>> targets) {
     deps.append_range(targets);
 }
 
@@ -50,4 +51,49 @@ void Target::AddIncludes(std::initializer_list<Path> includes) {
         flags.push_back("-I" + path.generic_string());
     }
 }
+
+void Target::AddSource(const Path& source) { units.push_back(source); }
+
+void Target::AddSources(const std::vector<Path>& sources) {
+    units.append_range(sources);
+}
+
+void Target::AddSources(std::initializer_list<Path> sources) {
+    units.append_range(sources);
+}
+
+Target::Target(const std::string& name, BuildType type, const Path& work_root,
+               const Path& build_dir, std::shared_ptr<ToolChain> tool_chain,
+               const std::vector<Path>& sources,
+               const std::vector<std::string>& flags,
+               const std::vector<std::shared_ptr<Target>>& targets)
+    : name(name),
+      type(type),
+      root(work_root),
+      build(build_dir),
+      tool_chain(tool_chain),
+      units(sources),
+      flags(flags),
+      deps(targets) {
+    if (build.empty()) build = work_root / "build";
+}
+
+namespace make {
+
+Build exec_target(const std::string& name, const Path& work_root) {
+    return std::make_shared<Target>(name, BuildType::exe, work_root,
+                                    work_root / "build");
+}
+
+Build static_target(const std::string& name, const Path& work_root) {
+    return std::make_shared<Target>(name, BuildType::lib, work_root,
+                                    work_root / "build");
+}
+
+Build dynamic_target(const std::string& name, const Path& work_root) {
+    return std::make_shared<Target>(name, BuildType::dll, work_root,
+                                    work_root / "build");
+}
+} // namespace make
+
 } // namespace csc

@@ -28,5 +28,8 @@ public:
     LLVM();
 };
 
+// TODO: search tool chain?
 std::string_view get_default_compiler();
+std::string_view get_default_archiver();
+std::shared_ptr<ToolChain> get_default_toolchain();
 } // namespace csc

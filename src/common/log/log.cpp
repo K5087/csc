@@ -7,22 +7,17 @@ namespace logger {
 
 const char* tostring(Level level) {
     switch (level) {
-        case Level::code:
-            return "code";
-        case Level::info:
-            return "info";
-        case Level::warn:
-            return "warn";
-        case Level::erro:
-            return "erro";
-        default:
-            return "unkn";
+        case Level::code: return "code";
+        case Level::info: return "info";
+        case Level::warn: return "warn";
+        case Level::erro: return "erro";
+        default: return "unkn";
     }
 }
 
 namespace impl {
 void log(Level level, const char* fmt, va_list args) {
-    std::fprintf(stderr, "[%s]", tostring(level));
+    std::fprintf(stderr, "[%s] ", tostring(level));
     std::vfprintf(stderr, fmt, args);
     std::putc('\n', stderr);
 }

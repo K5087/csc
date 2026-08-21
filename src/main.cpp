@@ -1,10 +1,12 @@
 #include <argp/argp.h>
+#include <csc/tool_chain.h>
 #include <log/log.h>
 #include <rsc/rsc.h>
 
 using namespace csc;
 
-void handle_run(std::string_view input, std::string_view name = "") {
+void handle_run(std::string_view input, std::string_view name = "",
+                const Path& path = {}) {
     Path source = input;
     Path dir;
     if (name.empty()) {
@@ -12,15 +14,12 @@ void handle_run(std::string_view input, std::string_view name = "") {
     } else {
         dir = rsc::script / name;
     }
-    if (!std::filesystem::exists(dir)) {
-        std::filesystem::create_directory(dir);
-    }
-    auto output = Path(input).replace_extension(get_extension()).generic_string();
+    std::filesystem::create_directory(dir);
+    auto output =
+        Path(input).replace_extension(get_extension()).generic_string();
 
-    cmd::Cmd compile{get_compiler(), input, "-o", output};
-    if (!csc::update_bin(input, {source}, compile)) {
-        return;
-    }
+    cmd::Cmd compile{get_default_compiler(), input, "-o", output};
+    if (!csc::update_bin(input, {source}, compile)) { return; }
 
     cmd::Cmd exec{output};
     if (cmd::run_cmd(exec).value.value_or(-1) != 0) {
@@ -31,10 +30,15 @@ void handle_run(std::string_view input, std::string_view name = "") {
 void handle_arg(int argc, char** argv) {
     argp::Parser parser;
     parser.add_opt({"-h", "--help"}, "print helper", argp::Boundary::get_self);
-    parser.add_opt({"-v", "--version"}, "get version", argp::Boundary::get_self);
-    parser.add_opt({"-n", "--name"}, "named build,excape explicit name", argp::Boundary::get_self);
+    parser.add_opt({"-v", "--version"}, "get version",
+                   argp::Boundary::get_self);
+    parser.add_opt({"-n", "--name"}, "named build,excape explicit name",
+                   argp::Boundary::get_self);
+    parser.add_opt({"-o", "--output"}, "output exec file at dir or path",
+                   argp::Boundary::one_arg);
 
-    parser.add_pos("input", false, "input script file path", argp::Boundary::another_rule);
+    parser.add_pos("input", false, "input script file path",
+                   argp::Boundary::another_rule);
     parser.parse(argc, argv);
 
     if (!parser.get_args("-h").empty()) {
@@ -53,9 +57,7 @@ void handle_arg(int argc, char** argv) {
     name = names.empty() ? "" : names.front();
 
     auto inputs = parser.get_pos(0);
-    if (!inputs.empty()) {
-        handle_run(inputs[0], name);
-    }
+    if (!inputs.empty()) { handle_run(inputs[0], name); }
 }
 
 int main(int argc, char* argv[]) {

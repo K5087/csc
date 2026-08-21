@@ -10,31 +10,6 @@ Just call shell Command and other exec,may be add more feature.
 
 ## How To Use
 
-include file and write build command.
+include file and write execute command.(wait for change)
 
-```cpp
-//build.cpp
-#include "csc.hpp"
-
-int main(int argc, char** argv) {
-    using namespace csc;
-    Cmd cmd("clang++", "-o", "main", "main.cpp");
-    run_cmd(cmd);
-}
-```
-
-```cpp
-//main.cpp
-#include <iostream>
-
-int main(int argc, char** argv) {
-    std::cout<<"Hello,World!\n";
-    return 0;
-}
-```
-
-> clang++ -std=c++23 build.cpp -o build
-
-> ./build
-
-> ./main
+> clang++ ./src/common/argp/argp.cpp ./src/common/cmd/cmd.cpp ./src/common/csc/csc.cpp ./src/common/csc/target.cpp ./src/common/csc/tool.cpp ./src/common/csc/tool_chain.cpp ./src/common/log/log.cpp ./src/common/rsc/rsc.cpp ./src/windows/cmd/cmd.cpp ./src/windows/csc/csc.cpp ./src/windows/csc/tool_chain.cpp ./src/windows/rsc/os.cpp ./compile.cpp -I./include -o compile.exe -std=c++26 -luuid -lole32
