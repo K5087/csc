@@ -31,6 +31,7 @@ UpdateStatus update_bin(fs::path bin, const std::vector<Path>& files,
     }
 
     if (run_cmd(cmd).value.value_or(-1) != 0) {
+        print_cmd(cmd);
         loge("compile build script failed");
 
         if (exist) { std::filesystem::rename(old_bin, bin); }
@@ -43,36 +44,6 @@ UpdateStatus update_bin(fs::path bin, const std::vector<Path>& files,
     std::filesystem::remove(old_binary_path);
 #endif
     return UpdateStatus::success;
-}
-
-void update_self(int argc, char** argv, const std::vector<fs::path>& files,
-                 const cmd::Cmd& cmd, bool exec_new, bool fail_exit) {
-    fs::path bin = argv[0];
-    UpdateStatus status = UpdateStatus::failed;
-    if (cmd.empty()) {
-        Cmd temp;
-        auto command = make_compile_cmd(files, {}, bin);
-        temp.append_range(command);
-        status = update_bin(bin, files, temp);
-    } else {
-        status = update_bin(bin, files, cmd);
-    }
-    switch (status) {
-        case UpdateStatus::success:
-            if (exec_new) {
-                cmd::Cmd exec;
-                for (int i = 0; i < argc; i++) { exec.push_back(argv[i]); }
-                cmd::run_cmd(exec);
-
-                // no matter exit is what,when exec_new, old alwase exit
-                std::exit(0);
-            }
-            break;
-        case csc::UpdateStatus::noneed: break;
-        case csc::UpdateStatus::failed:
-            if (fail_exit) { std::exit(0); }
-            break;
-    }
 }
 
 bool is_outdated(const fs::path& file, const std::vector<Path>& inputs) {
@@ -92,14 +63,16 @@ bool is_outdated(const fs::path& file, const std::vector<Path>& inputs) {
 bool build_target(std::shared_ptr<Target> target) {
     std::filesystem::create_directories(target->build);
 
-    // generate build
+    // check deps has build
     for (auto& build : target->deps) {
         if (!build->is_build) {
+            // generate deps
             if (!build_target(build)) { return false; }
         }
     }
     std::vector<fs::path> deps = target->units;
 
+    // check deps file is out of date
     // TODO: .h affect
     // use clang++ -MMD -MF foo.d -c foo.cpp -o foo.o
     for (const auto& dep : target->deps) { deps.push_back(dep->GetTarget()); }
@@ -137,9 +110,9 @@ bool build_target(std::shared_ptr<Target> target) {
     bool link;
     // link obj
     switch (target->type) {
-        case BuildType::exe: link = impl::link_exe(*target, objs); break;
-        case BuildType::lib: link = impl::link_lib(*target, objs); break;
-        case BuildType::dll: link = impl::link_dll(*target, objs); break;
+        case TargetType::exec: link = impl::link_exe(*target, objs); break;
+        case TargetType::arch: link = impl::link_lib(*target, objs); break;
+        case TargetType::share: link = impl::link_dll(*target, objs); break;
     }
 
     if (link) {
@@ -165,6 +138,7 @@ std::vector<std::string> make_compile_cmd(const std::vector<fs::path>& inputs,
                      }));
     cmd.emplace_back("-o");
     cmd.emplace_back(output.generic_string());
+    cmd.emplace_back("-std=c++26");
     return cmd;
 }
 
@@ -249,4 +223,5 @@ cmd::Ret compile_unit(const Target& target, const fs::path& unit,
     return ret;
 }
 } // namespace impl
+
 } // namespace csc

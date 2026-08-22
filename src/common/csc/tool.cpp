@@ -3,11 +3,10 @@
 #include <cassert>
 
 namespace csc {
-namespace fs = std::filesystem;
 
-std::vector<Path> find_file(const std::vector<Path>& paths,
-                            const std::string& extension) {
-    std::vector<Path> result;
+std::vector<fs::path> find_file(const std::vector<fs::path>& paths,
+                                const std::string& extension) {
+    std::vector<fs::path> result;
 
     for (const auto& root : paths) {
         if (!fs::exists(root)) { continue; }
@@ -23,9 +22,9 @@ std::vector<Path> find_file(const std::vector<Path>& paths,
     return result;
 }
 
-std::vector<Path> find_file(const std::vector<Path>& paths,
-                            const std::vector<std::string>& extension) {
-    std::vector<Path> result;
+std::vector<fs::path> find_file(const std::vector<fs::path>& paths,
+                                const std::vector<std::string>& extension) {
+    std::vector<fs::path> result;
 
     for (const auto& root : paths) {
         if (!fs::exists(root)) { continue; }
@@ -41,5 +40,4 @@ std::vector<Path> find_file(const std::vector<Path>& paths,
 
     return result;
 }
-
 } // namespace csc

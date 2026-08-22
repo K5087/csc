@@ -18,7 +18,7 @@ endif()
 set(SOURCE_DIR ${PROJECT_SOURCE_DIR}/src/${PLATFORM_NAME})
 
 set(RSC_DIR ${SOURCE_DIR}/rsc)
-set(RSC_SOURCES src/main.cpp src/common/rsc/rsc.cpp)
+set(RSC_SOURCES src/main.cpp src/common/rsc/rsc.cpp src/windows/rsc/os.cpp)
 set(RSC_TEST_SOURCES compile.cpp src/common/rsc/rsc.cpp src/windows/rsc/os.cpp)
 
 

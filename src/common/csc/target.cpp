@@ -2,15 +2,15 @@
 
 namespace csc {
 
-std::string Serialize(BuildType type, TargetFlavor flavor) {
+std::string Serialize(TargetType type, TargetFlavor flavor) {
     switch (type) {
-        case BuildType::exe: return ".exe";
-        case BuildType::lib:
+        case TargetType::exec: return ".exe";
+        case TargetType::arch:
             switch (flavor) {
                 case TargetFlavor::GNU: return ".a";
                 case TargetFlavor::MSVC: return ".lib";
             };
-        case BuildType::dll: return ".dll";
+        case TargetType::share: return ".dll";
     }
 }
 
@@ -62,7 +62,7 @@ void Target::AddSources(std::initializer_list<Path> sources) {
     units.append_range(sources);
 }
 
-Target::Target(const std::string& name, BuildType type, const Path& work_root,
+Target::Target(const std::string& name, TargetType type, const Path& work_root,
                const Path& build_dir, std::shared_ptr<ToolChain> tool_chain,
                const std::vector<Path>& sources,
                const std::vector<std::string>& flags,
@@ -81,17 +81,17 @@ Target::Target(const std::string& name, BuildType type, const Path& work_root,
 namespace make {
 
 Build exec_target(const std::string& name, const Path& work_root) {
-    return std::make_shared<Target>(name, BuildType::exe, work_root,
+    return std::make_shared<Target>(name, TargetType::exec, work_root,
                                     work_root / "build");
 }
 
 Build static_target(const std::string& name, const Path& work_root) {
-    return std::make_shared<Target>(name, BuildType::lib, work_root,
+    return std::make_shared<Target>(name, TargetType::arch, work_root,
                                     work_root / "build");
 }
 
 Build dynamic_target(const std::string& name, const Path& work_root) {
-    return std::make_shared<Target>(name, BuildType::dll, work_root,
+    return std::make_shared<Target>(name, TargetType::share, work_root,
                                     work_root / "build");
 }
 } // namespace make

@@ -12,20 +12,20 @@ using Path = std::filesystem::path;
     std::filesystem::path(std::source_location::current().file_name())
 #define CURRENT_DIR CURRENT_PATH.parent_path()
 
-enum class BuildType {
-    exe,
-    lib,
-    dll,
+enum class TargetType {
+    exec,
+    arch,
+    share,
 };
 
 enum class TargetFlavor { GNU, MSVC };
 
-std::string Serialize(BuildType type, TargetFlavor flavor);
+std::string Serialize(TargetType type, TargetFlavor flavor);
 
 class Target {
 public:
     Target() = delete;
-    Target(const std::string& name, BuildType type, const Path& work_root,
+    Target(const std::string& name, TargetType type, const Path& work_root,
            const Path& build = {},
            std::shared_ptr<ToolChain> tool_chain = get_default_toolchain(),
            const std::vector<Path>& sources = {},
@@ -40,7 +40,7 @@ public:
     Path root;
     Path build;
 
-    BuildType type;
+    TargetType type;
     TargetFlavor flavor = TargetFlavor::GNU;
     std::shared_ptr<ToolChain> tool_chain;
 
@@ -67,6 +67,9 @@ public:
 };
 
 using Build = std::shared_ptr<Target>;
+
+std::string_view get_extension(TargetType type = TargetType::exec,
+                               TargetFlavor flavor = TargetFlavor::GNU);
 
 namespace make {
 Build exec_target(const std::string& name, const Path& work_root = CURRENT_DIR);

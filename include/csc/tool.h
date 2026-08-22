@@ -3,10 +3,11 @@
 #include <vector>
 
 namespace csc {
-using Path = std::filesystem::path;
-std::vector<Path> find_file(const std::vector<Path>& path,
-                            const std::string& extension);
+namespace fs = std::filesystem;
+std::vector<fs::path> find_file(const std::vector<fs::path>& path,
+                                const std::string& extension);
 
-std::vector<Path> find_file(const std::vector<Path>& path,
-                            const std::vector<std::string>& extension);
+std::vector<fs::path> find_file(const std::vector<fs::path>& path,
+                                const std::vector<std::string>& extension);
+
 } // namespace csc

@@ -15,4 +15,7 @@ fs::path get_home_dir() {
 
     return {};
 }
+
+// TODO:impl for windows and linux
+bool valid_name(std::string_view name) { return true; }
 } // namespace os
