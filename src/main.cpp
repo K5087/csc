@@ -59,6 +59,7 @@ void handle_run(std::string_view input, std::string_view name,
             auto static_dir = package_dir / "lib/static";
             std::vector<std::string> libs;
             args.emplace_back((static_dir / "log.a").generic_string());
+            args.emplace_back((static_dir / "argp.a").generic_string());
             args.emplace_back((static_dir / "cmd.a").generic_string());
             args.emplace_back((static_dir / "csc.a").generic_string());
         } else {
