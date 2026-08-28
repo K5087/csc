@@ -96,4 +96,11 @@ Build dynamic_target(const std::string& name, const Path& work_root) {
 }
 } // namespace make
 
+std::string Serialize(TargetType type) {
+    switch (type) {
+        case TargetType::exec: return "exec";
+        case TargetType::arch: return "arch";
+        case TargetType::share: return "share";
+    }
+}
 } // namespace csc

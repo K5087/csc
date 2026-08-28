@@ -5,44 +5,43 @@
 
 namespace csc {
 
-fs::path get_predefine_include();
-fs::path get_predefine_shared();
-std::vector<fs::path> get_predefine_static();
-std::vector<std::string> get_predefine_macro();
+#define QUOTE_IMPL(...) #__VA_ARGS__
+#define QUOTE(...)      QUOTE_IMPL(__VA_ARGS__)
 
-#ifdef CSC_INSTALL_DIR
-inline std::string quote(std::string_view s) {
-    return "\"" + std::string(s) + "\"";
+#ifdef CSC_INCLUDE_DIR
+inline std::vector<fs::path> get_predefine_include() { return CSC_INCLUDE_DIR; }
+#endif
+
+#ifdef CSC_LINK_SHARED_LIB
+inline std::vector<fs::path> get_predefine_shared() {
+    return CSC_LINK_SHARED_LIB;
 }
+#endif
 
-inline fs::path get_predefine_include() {
-    return fs::path(CSC_INSTALL_DIR) / "include";
-}
-
-    #ifdef CSC_LINK_SHARED_LIB
-inline fs::path get_predefine_shared() {
-    return fs::path(CSC_INSTALL_DIR) / "lib/shared/" / CSC_LINK_SHARED_LIB;
-}
-    #endif
-
+#ifdef CSC_LINK_STATIC_LIB
 inline std::vector<fs::path> get_predefine_static() {
-    fs::path static_dir = fs::path(CSC_INSTALL_DIR) / "lib/static";
-    return {(static_dir / "log.a"), (static_dir / "cmd.a"),
-            (static_dir / "argp.a"), (static_dir / "csc.a")};
+    return CSC_LINK_STATIC_LIB;
 }
+#endif
 
 inline std::vector<std::string> get_predefine_macro() {
     std::vector<std::string> macros;
-    macros.emplace_back(std::string("-DCSC_INSTALL_DIR=") +
-                        quote(CSC_INSTALL_DIR));
 
-    #ifdef CSC_LINK_SHARED_LIB
+#ifdef CSC_INCLUDE_DIR
+    macros.emplace_back(std::string("-CSC_INCLUDE_DIR=") +
+                        QUOTE(CSC_INCLUDE_DIR));
+#endif
+#ifdef CSC_LINK_SHARED_LIB
     macros.emplace_back(std::string("-DCSC_LINK_SHARED_LIB=") +
-                        quote(CSC_LINK_SHARED_LIB));
-    #endif
+                        QUOTE(CSC_LINK_SHARED_LIB));
+#endif
+#ifdef CSC_LINK_STATIC_LIB
+    macros.emplace_back(std::string("-CSC_LINK_STATIC_LIB=") +
+                        QUOTE(CSC_LINK_STATIC_LIB));
+#endif
+
     return macros;
 }
-#endif
 
 /**
  * @brief if argv[0] need update,use cmd update
@@ -62,21 +61,21 @@ inline void update_self(int argc, char** argv,
     UpdateStatus status = UpdateStatus::failed;
     if (cmd.empty()) {
         cmd::Cmd temp;
-#ifdef CSC_INSTALL_DIR
         std::vector<fs::path> inputs = files;
-    #ifdef CSC_LINK_SHARED_LIB
-        inputs.emplace_back(get_predefine_shared());
-    #else
+        std::vector<fs::path> includes{};
+#ifdef CSC_INCLUDE_DIR
+        includes = get_predefine_include();
+#endif
+#ifdef CSC_LINK_SHARED_LIB
+        inputs.append_range(get_predefine_shared());
+#endif
+#ifdef CSC_LINK_STATIC_LIB
         inputs.append_range(get_predefine_static());
-    #endif
-        auto command = make_compile_cmd(inputs, {get_predefine_include()}, bin);
+#endif
+        auto command = make_compile_cmd(inputs, includes, bin);
         temp.append_range(command);
         auto macros = get_predefine_macro();
         temp.append_range(macros);
-#else
-        auto command = make_compile_cmd(files, {}, bin);
-        temp.append_range(command);
-#endif
 
         status = update_bin(bin, files, temp);
     } else {

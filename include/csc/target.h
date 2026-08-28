@@ -21,6 +21,7 @@ enum class TargetType {
 enum class TargetFlavor { GNU, MSVC };
 
 std::string Serialize(TargetType type, TargetFlavor flavor);
+std::string Serialize(TargetType type);
 
 class Target {
 public:

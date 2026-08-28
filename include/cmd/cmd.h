@@ -46,9 +46,13 @@ struct Ret {
     std::optional<int> value;
 };
 
+// escape string
+std::string escape_string(std::string_view view);
+
 // run an command
 Ret run_cmd(const Cmd& cmd, Opt opt = {}) noexcept;
 
 // wait procs until all return
 void wait_procs(std::vector<Ret>& procs);
+
 } // namespace cmd

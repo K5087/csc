@@ -33,6 +33,34 @@ bool check_procs() {
 }
 } // namespace impl
 
+std::string escape_string(std::string_view view) {
+    if (!view.empty() &&
+        std::string_view::npos == view.find_first_of(" \t\n\v\"")) {
+        return std::string(view);
+    } else {
+        std::string str("\"");
+        size_t backslashes = 0;
+        for (size_t j = 0; j < view.length(); ++j) {
+            switch (view[j]) {
+                case '\\': backslashes += 1; break;
+                case '\"':
+                    str.append(2 * backslashes + 1, '\\');
+                    backslashes = 0;
+                    str.push_back(view[j]);
+                    break;
+                default:
+                    str.append(backslashes, '\\');
+                    backslashes = 0;
+                    str.push_back(view[j]);
+                    break;
+            }
+        }
+        str.append(2 * backslashes, '\\');
+        str.append("\"");
+        return str;
+    }
+}
+
 Ret run_cmd(const Cmd& cmd, Opt opt) noexcept {
     if (cmd.empty()) {
         loge("Could not run empty command");
@@ -66,9 +94,7 @@ Ret run_cmd(const Cmd& cmd, Opt opt) noexcept {
 }
 
 void wait_procs(std::vector<Ret>& rets) {
-    for (auto& ret : rets) {
-        ret.value = impl::wait_proc(ret.proc);
-    }
+    for (auto& ret : rets) { ret.value = impl::wait_proc(ret.proc); }
 }
 
 } // namespace cmd

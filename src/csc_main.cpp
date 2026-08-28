@@ -3,15 +3,30 @@
 #include <csc/target.h>
 #include <csc/tool_chain.h>
 #include <log/log.h>
-#include <rsc/rsc.h>
 
 using namespace csc;
 namespace fs = std::filesystem;
+fs::path current = fs::current_path();
+
+std::string serialize(const std::vector<fs::path>& paths) {
+    std::string str = "{";
+    bool is_first = true;
+    for (auto& path : paths) {
+        if (is_first)
+            is_first = false;
+        else
+            str += ",";
+        str += "\"" + path.generic_string() + "\"";
+    }
+
+    str += "}";
+    return str;
+}
 
 /* have path mean will generate in path, name will not use*/
 void handle_run(std::string_view input, std::string_view name,
-                const Path& path = {}, bool link = false,
-                bool use_static = false, bool install = false) {
+                std::vector<std::string_view> links, const Path& path = {},
+                bool link = false, bool use_static = false) {
     Path source = input;
     Path dir;
     std::string output;
@@ -23,9 +38,9 @@ void handle_run(std::string_view input, std::string_view name,
             output = path.generic_string();
         }
     } else if (name.empty()) {
-        dir = rsc::get::script_dir() / source.stem();
+        dir = current / source.stem();
     } else {
-        dir = rsc::get::script_dir() / name;
+        dir = current / name;
     }
 
     if (output.empty()) {
@@ -38,54 +53,46 @@ void handle_run(std::string_view input, std::string_view name,
 
     std::vector<std::string> args;
     cmd::Cmd compile{get_default_compiler(), input};
-    if (link || install) {
-        auto package_dir = rsc::get::package_dir("rsc");
+    if (link) {
+        auto package_dir = current.parent_path();
         auto shared_dir = package_dir / "lib/shared";
         auto include_dir = package_dir / "include";
         args.emplace_back("-I" + include_dir.generic_string());
-        args.emplace_back("-DCSC_INSTALL_DIR=\"" +
-                          package_dir.generic_string() + "\"");
-        if (install) {
-#ifdef _WIN32
-            std::string shared = (shared_dir / "rsc.dll").generic_string();
-#else
-            std::string shared = (shared / "rsc.so").string();
-#endif // _WIN32
-            args.emplace_back(shared);
-            args.emplace_back("-DCSC_LINK_SHARED_LIB=\"" +
-                              Path(shared).filename().string() + "\"");
-        } else if (use_static) {
-            logc("what");
+        args.emplace_back("-DCSC_INCLUDE_DIR=" + serialize({include_dir}));
+
+        if (use_static) {
             auto static_dir = package_dir / "lib/static";
-            std::vector<std::string> libs;
-            args.emplace_back((static_dir / "log.a").generic_string());
-            args.emplace_back((static_dir / "argp.a").generic_string());
-            args.emplace_back((static_dir / "cmd.a").generic_string());
-            args.emplace_back((static_dir / "csc.a").generic_string());
+            std::vector<fs::path> libs{
+                static_dir / "log.a",
+                static_dir / "argp.a",
+                static_dir / "cmd.a",
+                static_dir / "csc.a",
+            };
+            for (auto& lib : libs) { args.emplace_back(lib.generic_string()); }
+            // TODO: deside links other lib should serialize?
+            args.emplace_back("-DCSC_LINK_SHARED_LIB=" + serialize(libs));
         } else {
-            logc("normal");
 #ifdef _WIN32
             std::string shared = (shared_dir / "csc.dll").generic_string();
 #else
             std::string shared = (shared / "csc.so").string();
 #endif // _WIN32
             args.emplace_back(shared);
-            args.emplace_back("-DCSC_LINK_SHARED_LIB=\"" +
-                              Path(shared).filename().string() + "\"");
+            args.emplace_back("-DCSC_LINK_SHARED_LIB=" + serialize({shared}));
         }
     } else if (use_static) {
         logw("use static muse have -l arg");
     }
     compile.append_range(args);
+    compile.append_range(links);
 
     compile.emplace_back("-o");
     compile.emplace_back(output);
     compile.emplace_back("-std=c++26");
-    print_cmd(compile);
 
     if (csc::update_bin(input, {source}, compile) ==
         csc::UpdateStatus::failed) {
-        loge("build failed");
+        loge("build %s failed", source.filename().string().c_str());
         return;
     }
 
@@ -111,23 +118,23 @@ void handle_arg(int argc, char** argv) {
                    argp::Boundary::get_self);
     parser.add_opt({"-o", "--output"}, "output exec file at dir or path",
                    argp::Boundary::one_arg);
+    parser.add_opt({"-L"}, "link others shared lib",
+                   argp::Boundary::another_rule);
 
     parser.add_pos("input", false, "input script file path",
                    argp::Boundary::another_rule);
 
-    parser.add_opt({"install"}, "link rsc lib, (implies -l)",
-                   argp::Boundary::get_self);
     parser.parse(argc, argv);
 
     /* help */
     if (!parser.get_args("-h").empty()) {
-        parser.print_helper("rsc");
+        parser.print_helper("csc");
         return;
     }
 
     /* version */
     if (!parser.get_args("-v").empty()) {
-        printf("rsc 1.0.0 build by moke");
+        printf("csc 1.0.0 build by moke");
         return;
     }
 
@@ -135,19 +142,23 @@ void handle_arg(int argc, char** argv) {
     bool use_link = !parser.get_args("-l").empty();
     bool use_static = !parser.get_args("-s").empty();
     Path output = parser.get_arg("-o", "");
+    std::vector<std::string_view> links = parser.get_args("-L");
+
+    if (links.empty()) {
+        loge("-L must have args");
+        return;
+    }
 
     auto inputs = parser.get_pos(0);
     if (inputs.empty()) {
         loge("no input file");
         return;
     }
-    bool install = !parser.get_args("install").empty();
-    handle_run(inputs[0], name, output, use_link, use_static, install);
+    handle_run(inputs[0], name, links, output, use_link, use_static);
 }
 
 int main(int argc, char* argv[]) {
     // default install binary as current path
-    rsc::init();
     handle_arg(argc, argv);
 
     return 0;

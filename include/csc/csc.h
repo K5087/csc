@@ -1,8 +1,9 @@
 #pragma once
 #include <cmd/cmd.h>
+#include <log/log.h>
 
 #include <filesystem>
-#include <log/log.h>
+#include <functional>
 #include <vector>
 
 namespace csc {
@@ -44,9 +45,12 @@ UpdateStatus update_bin(fs::path bin, const std::vector<fs::path>& files,
 bool is_outdated(const std::filesystem::path& file,
                  const std::vector<fs::path>& inputs);
 
-bool build_target(std::shared_ptr<Target> target);
+bool build_target(std::shared_ptr<Target> target,
+                  std::function<void()> before_build = {});
 
 namespace impl {
+// parse .d file,get obj dep
+std::vector<fs::path> get_deps(const fs::path& obj);
 cmd::Ret compile_unit(const Target& target, const fs::path& unit,
                       const std::string& obj);
 bool link_exe(Target& info, const std::vector<std::string>& objs);

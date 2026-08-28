@@ -1,6 +1,7 @@
 #include <rsc/rsc.h>
 
 #include <log/log.h>
+#include <rsc/dev.h>
 #include <rsc/os.h>
 
 #include <ranges>
@@ -121,9 +122,6 @@ void create_shim(const std::string& name, const std::vector<std::string>& bins,
 
     impl::create_shim(shared_libs, package_shared, lib_dir);
 }
-} // namespace rsc
-
-namespace rsc {
 
 namespace impl {
 
