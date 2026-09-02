@@ -45,16 +45,39 @@ UpdateStatus update_bin(fs::path bin, const std::vector<fs::path>& files,
 bool is_outdated(const std::filesystem::path& file,
                  const std::vector<fs::path>& inputs);
 
+/* use single command build target */
+// bool build_single(std::shared_ptr<Target> target,
+//                   std::function<void()> before_build = nullptr);
+
+/* build target by cache file */
 bool build_target(std::shared_ptr<Target> target,
-                  std::function<void()> before_build = {});
+                  std::function<void()> before_link = nullptr);
+
+// TODO: have no impl
+/* build target using dep Graph */
+bool build_graph(std::shared_ptr<Target> target,
+                 std::function<void()> before_link = nullptr);
+
+// generate compile_commands.json
+void gen_database(std::shared_ptr<Target> target,
+                  const fs::path& path = "./compile_commands.json",
+                  bool append = false);
 
 namespace impl {
 // parse .d file,get obj dep
-std::vector<fs::path> get_deps(const fs::path& obj);
+std::vector<fs::path> get_deps(const fs::path& obj, const fs::path& root);
 cmd::Ret compile_unit(const Target& target, const fs::path& unit,
                       const std::string& obj);
 bool link_exe(Target& info, const std::vector<std::string>& objs);
 bool link_lib(Target& info, const std::vector<std::string>& objs);
 bool link_dll(Target& info, const std::vector<std::string>& objs);
+
+// use compile info generate database
+void gen_database(std::string& o, const std::string& directory,
+                  const cmd::Cmd& cmd, const std::string& file,
+                  const std::string& output = "");
+// use target generate database
+void gen_database(std::string& databse, std::shared_ptr<Target> target,
+                  bool append);
 } // namespace impl
 } // namespace csc

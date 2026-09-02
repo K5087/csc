@@ -8,7 +8,11 @@ std::string GetCommandStr(const Cmd& cmd) {
     for (size_t i = 0; i < cmd.size(); i++) {
         std::string_view arg = cmd[i];
         if (i > 0) command.append(" ");
-        command.append(escape_string(arg));
+        if (need_escape(arg)) {
+            command.append(escape_string(arg));
+        } else {
+            command.append(arg);
+        }
     }
     return command;
 }

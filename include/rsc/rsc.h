@@ -2,6 +2,7 @@
 #include <csc/csc.h>
 
 namespace rsc {
+
 namespace fs = std::filesystem;
 void init();
 
@@ -46,4 +47,5 @@ namespace impl {
 void create_shim(std::ranges::input_range auto&& names,
                  const fs::path& search_dir, const fs::path symlink_dir);
 } // namespace impl
+
 } // namespace rsc

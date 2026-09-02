@@ -4,7 +4,6 @@
 namespace os {
 namespace fs = std::filesystem;
 
-// TODO: impl in linux
 fs::path get_home_dir();
 bool valid_name(std::string_view name);
 } // namespace os

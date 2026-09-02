@@ -33,32 +33,32 @@ bool check_procs() {
 }
 } // namespace impl
 
+bool need_escape(std::string_view view) {
+    return view.empty() ||
+           std::string_view::npos != view.find_first_of(" \t\n\v\"");
+}
+
 std::string escape_string(std::string_view view) {
-    if (!view.empty() &&
-        std::string_view::npos == view.find_first_of(" \t\n\v\"")) {
-        return std::string(view);
-    } else {
-        std::string str("\"");
-        size_t backslashes = 0;
-        for (size_t j = 0; j < view.length(); ++j) {
-            switch (view[j]) {
-                case '\\': backslashes += 1; break;
-                case '\"':
-                    str.append(2 * backslashes + 1, '\\');
-                    backslashes = 0;
-                    str.push_back(view[j]);
-                    break;
-                default:
-                    str.append(backslashes, '\\');
-                    backslashes = 0;
-                    str.push_back(view[j]);
-                    break;
-            }
+    std::string str("\"");
+    size_t backslashes = 0;
+    for (size_t j = 0; j < view.length(); ++j) {
+        switch (view[j]) {
+            case '\\': backslashes += 1; break;
+            case '\"':
+                str.append(2 * backslashes + 1, '\\');
+                backslashes = 0;
+                str.push_back(view[j]);
+                break;
+            default:
+                str.append(backslashes, '\\');
+                backslashes = 0;
+                str.push_back(view[j]);
+                break;
         }
-        str.append(2 * backslashes, '\\');
-        str.append("\"");
-        return str;
     }
+    str.append(2 * backslashes, '\\');
+    str.append("\"");
+    return str;
 }
 
 Ret run_cmd(const Cmd& cmd, Opt opt) noexcept {

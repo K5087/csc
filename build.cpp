@@ -24,6 +24,7 @@ std::string platform = "windows";
 #else
 std::string platform = "unix";
 #endif // _WIN32
+
 fs::path platform_source = current / "src" / platform;
 
 Build make_build(const std::string& name) {
@@ -47,8 +48,9 @@ Build make_shared(std::shared_ptr<Target> target) {
 bool update_build(int argc, char** argv, std::shared_ptr<Target> build) {
     using std::filesystem::last_write_time;
 
-    fs::path bin = build->GetTarget();
-    fs::path old_bin = build->GetTarget() + ".old";
+    fs::path bin = argv[0];
+    fs::path old_bin = fs::path(bin).string() + ".old";
+    fs::path target_bin = build->GetTarget();
     auto old_time = last_write_time(bin);
 
     bool exist = fs::exists(bin);
@@ -61,8 +63,9 @@ bool update_build(int argc, char** argv, std::shared_ptr<Target> build) {
         return false;
     }
 
-    auto new_time = last_write_time(bin);
+    auto new_time = last_write_time(target_bin);
     if (new_time > old_time) {
+        if (!fs::exists(bin)) fs::copy_file(target_bin, bin);
         logi("*** execute new program ***");
         cmd::Cmd exec;
         for (int i = 0; i < argc; i++) { exec.push_back(argv[i]); }
@@ -86,43 +89,51 @@ int main(int argc, char* argv[]) {
     auto csc = make_build("csc");
     csc->AddDepends({log, cmd, argp});
 
+    auto rsc = make_build("rsc");
+    rsc->searches = {"uuid", "ole32"};
+    rsc->AddDepends({log, argp, cmd, csc});
+
     auto csc_shared = make_shared(csc);
     auto csc_exe = make_shared(csc);
     csc_exe->type = TargetType::exec;
 
     // build rsc.exe compile.exe
-    auto rsc = make_build("rsc");
-    rsc->type = TargetType::exec;
-    rsc->searches = {"uuid", "ole32"};
-    rsc->AddDepends({log, argp, cmd, csc});
+    auto rsc_exe = make_shared(rsc);
+    rsc_exe->type = TargetType::exec;
 
-    auto build = std::make_shared<Target>(*rsc);
+    auto build = std::make_shared<Target>(*rsc_exe);
     build->name = "build";
 
-    auto rsc_shared = make_shared(rsc);
+    auto rsc_shared = make_shared(rsc_exe);
 
-    rsc->units.push_back(current / "src/rsc_main.cpp");
+    rsc_exe->units.push_back(current / "src/rsc_main.cpp");
     csc_exe->units.push_back(current / "src/csc_main.cpp");
     build->units.push_back(current / "build.cpp");
 
     if (!update_build(argc, argv, build)) { return -1; };
     if (!build_target(rsc)) { return -1; }
+    if (!build_target(rsc_exe)) { return -1; }
     if (!build_target(csc_exe)) { return -1; }
     if (!build_target(csc_shared)) { return -1; }
     if (!build_target(rsc_shared)) { return -1; }
+    gen_database(rsc_exe, current / "compile_commands.json");
     {
         // install
         std::vector<fs::path> bins;
         std::vector<fs::path> includes;
         std::vector<fs::path> static_libs;
         std::vector<fs::path> shared_libs;
-        bins.emplace_back(rsc->GetTarget());
+
+        bins.emplace_back(rsc_exe->GetTarget());
         bins.emplace_back(build->GetTarget());
         bins.emplace_back(csc_exe->GetTarget());
+
         includes.emplace_back(include_dir);
-        static_libs.append_range(
-            std::vector<fs::path>{log->GetTarget(), argp->GetTarget(),
-                                  csc->GetTarget(), cmd->GetTarget()});
+
+        static_libs.append_range(std::vector<fs::path>{
+            log->GetTarget(), argp->GetTarget(), csc->GetTarget(),
+            cmd->GetTarget(), rsc->GetTarget()});
+
         shared_libs.emplace_back(csc_shared->GetTarget());
         shared_libs.emplace_back(rsc_shared->GetTarget());
 

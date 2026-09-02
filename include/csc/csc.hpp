@@ -28,7 +28,7 @@ inline std::vector<std::string> get_predefine_macro() {
     std::vector<std::string> macros;
 
 #ifdef CSC_INCLUDE_DIR
-    macros.emplace_back(std::string("-CSC_INCLUDE_DIR=") +
+    macros.emplace_back(std::string("-DCSC_INCLUDE_DIR=") +
                         QUOTE(CSC_INCLUDE_DIR));
 #endif
 #ifdef CSC_LINK_SHARED_LIB
@@ -36,15 +36,26 @@ inline std::vector<std::string> get_predefine_macro() {
                         QUOTE(CSC_LINK_SHARED_LIB));
 #endif
 #ifdef CSC_LINK_STATIC_LIB
-    macros.emplace_back(std::string("-CSC_LINK_STATIC_LIB=") +
+    macros.emplace_back(std::string("-DCSC_LINK_STATIC_LIB=") +
                         QUOTE(CSC_LINK_STATIC_LIB));
 #endif
-
+#ifdef CSC_GEN_DATABASE
+    macros.emplace_back(std::string("-DCSC_GEN_DATABASE=") +
+                        QUOTE(CSC_GEN_DATABASE));
+#endif
     return macros;
 }
 
+#ifdef CSC_GEN_DATABASE
+inline std::string csc_gen_database = {
+    #embed QUOTE(CSC_GEN_DATABASE)
+};
+#else
+inline std::string csc_gen_database = "[\n";
+#endif
+
 /**
- * @brief if argv[0] need update,use cmd update
+ * @brief if `argv[0]` need update,use cmd update
  *
  * @param argc input arg count
  * @param argv input args
@@ -96,6 +107,22 @@ inline void update_self(int argc, char** argv,
         case csc::UpdateStatus::failed:
             if (fail_exit) { std::exit(0); }
             break;
+    }
+}
+
+/**
+ * @brief gen compile_commands.json, if only want target's database, use
+ * csc::gen_database replace this
+ *
+ * @param target which target should gen database(include sub targets)
+ * @param path compile_commands.json file path
+ */
+inline void update_database(std::shared_ptr<Target> target,
+                            const fs::path& path) {
+    std::string database = csc_gen_database;
+    impl::gen_database(database, target, true);
+    if (!write_file(path, database)) {
+        loge("gen database failed: %s", path.string().c_str());
     }
 }
 } // namespace csc

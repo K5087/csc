@@ -37,29 +37,29 @@ void Target::AddDepends(
 }
 
 void Target::AddInclude(const Path& include) {
-    flags.push_back("-I" + include.generic_string());
+    flags.push_back("-I" + std::filesystem::absolute(include).generic_string());
 }
 
 void Target::AddIncludes(const std::vector<Path>& includes) {
-    for (auto& path : includes) {
-        flags.push_back("-I" + path.generic_string());
-    }
+    for (auto& path : includes) { AddInclude(path); }
 }
 
 void Target::AddIncludes(std::initializer_list<Path> includes) {
-    for (auto& path : includes) {
-        flags.push_back("-I" + path.generic_string());
-    }
+    for (auto& path : includes) { AddInclude(path); }
 }
 
-void Target::AddSource(const Path& source) { units.push_back(source); }
+void Target::AddSource(const Path& source) {
+    units.push_back(std::filesystem::absolute(source));
+}
 
 void Target::AddSources(const std::vector<Path>& sources) {
-    units.append_range(sources);
+    units.reserve(units.size() + sources.size());
+    for (auto& path : sources) { AddSource(path); }
 }
 
 void Target::AddSources(std::initializer_list<Path> sources) {
-    units.append_range(sources);
+    units.reserve(units.size() + sources.size());
+    for (auto& path : sources) { AddSource(path); }
 }
 
 Target::Target(const std::string& name, TargetType type, const Path& work_root,

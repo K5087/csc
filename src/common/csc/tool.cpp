@@ -61,4 +61,65 @@ std::optional<std::string> read_file(const fs::path& path) {
 
     return buff;
 }
+
+bool write_file(const fs::path& path, const std::string& data) {
+    std::ofstream file(path, std::ios::binary);
+    if (!file) { return false; }
+    file << data;
+    if (!file) { return false; }
+    return true;
+}
+
+std::vector<fs::path> parse_dep(const std::string& data, const fs::path& root) {
+    std::vector<fs::path> paths;
+
+    auto iter = data.begin();
+    std::string str;
+    auto push = [&]() {
+        if (!str.empty()) {
+            paths.push_back(root / str);
+            str.clear();
+        }
+    };
+    while (iter != data.end()) {
+        switch (*iter) {
+            case ':':
+                if (std::next(iter) != data.end() && *std::next(iter) == ' ') {
+                    str.clear();
+                    iter++;
+                    break;
+                }
+                str += *iter;
+                break;
+            case ' ': push(); break;
+            case '\r': push(); break;
+            case '\n': push(); break;
+            case '\\': {
+                auto next = std::next(iter);
+                if (next == data.end()) {
+                    str += *iter;
+                    break;
+                }
+
+                switch (*next) {
+                    case '\n': ++iter; break;
+                    case '\r': {
+                        auto next2 = std::next(next);
+                        if (next2 != data.end() && *next2 == '\n')
+                            iter += 2;
+                        else
+                            str += *iter;
+                        break;
+                    }
+                    default: str += *iter; break;
+                }
+                break;
+            }
+            default: str += *iter;
+        }
+        iter++;
+    }
+    push();
+    return paths;
+}
 } // namespace csc

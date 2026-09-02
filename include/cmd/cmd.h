@@ -46,6 +46,9 @@ struct Ret {
     std::optional<int> value;
 };
 
+// check string_view whether need escape
+bool need_escape(std::string_view view);
+
 // escape string
 std::string escape_string(std::string_view view);
 

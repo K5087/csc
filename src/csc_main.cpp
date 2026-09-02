@@ -1,12 +1,12 @@
 #include <argp/argp.h>
-#include <csc/debug.hpp>
+#include <csc/csc.h>
 #include <csc/target.h>
+#include <csc/tool.h>
 #include <csc/tool_chain.h>
 #include <log/log.h>
 
 using namespace csc;
 namespace fs = std::filesystem;
-fs::path current = fs::current_path();
 
 std::string serialize(const std::vector<fs::path>& paths) {
     std::string str = "{";
@@ -24,37 +24,22 @@ std::string serialize(const std::vector<fs::path>& paths) {
 }
 
 /* have path mean will generate in path, name will not use*/
-void handle_run(std::string_view input, std::string_view name,
-                std::vector<std::string_view> links, const Path& path = {},
-                bool link = false, bool use_static = false) {
-    Path source = input;
-    Path dir;
-    std::string output;
-    if (!path.empty()) {
-        if (fs::is_directory(path)) {
-            dir = path;
-        } else {
-            dir = path.parent_path();
-            output = path.generic_string();
-        }
-    } else if (name.empty()) {
-        dir = current / source.stem();
-    } else {
-        dir = current / name;
-    }
-
-    if (output.empty()) {
-        output = (dir / source.filename())
-                     .replace_extension(get_extension())
-                     .generic_string();
-    }
-
-    std::filesystem::create_directory(dir);
+void handle_compile(const fs::path& csc, const fs::path& input,
+                    const fs::path& output, std::vector<std::string_view> links,
+                    bool link = false, bool use_static = false,
+                    bool gen_data = false) {
+    std::string input_file = input.generic_string();
+    std::string output_file = output.generic_string();
 
     std::vector<std::string> args;
-    cmd::Cmd compile{get_default_compiler(), input};
+    cmd::Cmd compile{get_default_compiler(), input_file};
     if (link) {
-        auto package_dir = current.parent_path();
+        // rsc common bin path
+        auto package_dir =
+            csc.parent_path().parent_path() / "package/rsc/current";
+        // rsc package bin path
+        if (!fs::exists(package_dir))
+            package_dir = csc.parent_path().parent_path();
         auto shared_dir = package_dir / "lib/shared";
         auto include_dir = package_dir / "include";
         args.emplace_back("-I" + include_dir.generic_string());
@@ -69,7 +54,7 @@ void handle_run(std::string_view input, std::string_view name,
                 static_dir / "csc.a",
             };
             for (auto& lib : libs) { args.emplace_back(lib.generic_string()); }
-            // TODO: deside links other lib should serialize?
+            libs.append_range(links);
             args.emplace_back("-DCSC_LINK_SHARED_LIB=" + serialize(libs));
         } else {
 #ifdef _WIN32
@@ -77,8 +62,10 @@ void handle_run(std::string_view input, std::string_view name,
 #else
             std::string shared = (shared / "csc.so").string();
 #endif // _WIN32
+            std::vector<fs::path> libs{shared};
             args.emplace_back(shared);
-            args.emplace_back("-DCSC_LINK_SHARED_LIB=" + serialize({shared}));
+            libs.append_range(links);
+            args.emplace_back("-DCSC_LINK_SHARED_LIB=" + serialize({libs}));
         }
     } else if (use_static) {
         logw("use static muse have -l arg");
@@ -87,20 +74,33 @@ void handle_run(std::string_view input, std::string_view name,
     compile.append_range(links);
 
     compile.emplace_back("-o");
-    compile.emplace_back(output);
+    compile.emplace_back(output_file);
     compile.emplace_back("-std=c++26");
+    if (gen_data) {
+        std::string database = "[\n";
+        impl::gen_database(database,
+                           fs::absolute(input.parent_path()).generic_string(),
+                           compile, input_file, output_file);
+        database += "\n]";
+        fs::path path = output.parent_path() / "compile_commands.json";
+        if (!write_file(path, database)) {
+            loge("gen compile commands failed: %s",
+                 path.generic_string().c_str());
+            goto skip_gen;
+        }
+        args.push_back("-DCSC_GEN_DATABASE=" + path.generic_string());
+        compile.emplace_back(args.back());
+    }
 
-    if (csc::update_bin(input, {source}, compile) ==
+skip_gen:
+
+    if (csc::update_bin(output, {input}, compile) ==
         csc::UpdateStatus::failed) {
-        loge("build %s failed", source.filename().string().c_str());
+        loge("build %s failed", output.filename().string().c_str());
         return;
     }
 
-    logi("build %s success", source.filename().string().c_str());
-    cmd::Cmd exec{output};
-    if (cmd::run_cmd(exec).value.value_or(-1) != 0) {
-        loge("execute %s failed", output.c_str());
-    }
+    logi("build %s success", output.generic_string().c_str());
 }
 
 void handle_arg(int argc, char** argv) {
@@ -109,16 +109,18 @@ void handle_arg(int argc, char** argv) {
     parser.add_opt({"-v", "--version"}, "get version",
                    argp::Boundary::get_self);
 
-    parser.add_opt({"-n", "--name"}, "named build,excape explicit name",
+    parser.add_opt({"-n", "--name"}, "named build,expect explicit name",
                    argp::Boundary::get_self);
     parser.add_opt({"-l", "--link"}, "link csc lib, (default is shared lib)",
                    argp::Boundary::get_self);
     parser.add_opt({"-s", "--static"},
                    "link target with static lib,must have -l arg",
                    argp::Boundary::get_self);
+    parser.add_opt({"-g"}, "generate compile_command.json, will override file",
+                   argp::Boundary::get_self);
     parser.add_opt({"-o", "--output"}, "output exec file at dir or path",
                    argp::Boundary::one_arg);
-    parser.add_opt({"-L"}, "link others shared lib",
+    parser.add_opt({"-L"}, "link others lib(use path)",
                    argp::Boundary::another_rule);
 
     parser.add_pos("input", false, "input script file path",
@@ -138,23 +140,38 @@ void handle_arg(int argc, char** argv) {
         return;
     }
 
-    std::string_view name = parser.get_arg("-n", "");
-    bool use_link = !parser.get_args("-l").empty();
-    bool use_static = !parser.get_args("-s").empty();
-    Path output = parser.get_arg("-o", "");
-    std::vector<std::string_view> links = parser.get_args("-L");
-
-    if (links.empty()) {
-        loge("-L must have args");
-        return;
-    }
-
+    /* compile args */
     auto inputs = parser.get_pos(0);
     if (inputs.empty()) {
         loge("no input file");
         return;
     }
-    handle_run(inputs[0], name, links, output, use_link, use_static);
+    fs::path input = {inputs[0]};
+    std::string default_name =
+        input.filename().replace_extension(get_extension()).string();
+    std::string_view name = parser.get_arg("-n", default_name);
+    bool use_link = !parser.get_args("-l").empty();
+    bool use_static = !parser.get_args("-s").empty();
+    bool gen_data = !parser.get_args("-g").empty();
+    Path output = parser.get_arg("-o", "");
+
+    if (output.empty()) {
+        output = fs::current_path() / name;
+    } else if (fs::exists(output)) {
+        if (fs::is_directory(output)) { output = output / name; }
+    } else {
+        if (output.filename().empty()) {
+            fs::create_directory(output);
+            output = output / name;
+        } else {
+            fs::create_directory(output.parent_path());
+        }
+    }
+
+    std::vector<std::string_view> links = parser.get_args("-L");
+
+    handle_compile(argv[0], input, output, links, use_link, use_static,
+                   gen_data);
 }
 
 int main(int argc, char* argv[]) {

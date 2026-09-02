@@ -6,6 +6,7 @@
 #include <csc/debug.hpp>
 
 #include <cassert>
+#include <map>
 #include <ranges>
 
 namespace csc {
@@ -46,6 +47,7 @@ UpdateStatus update_bin(fs::path bin, const std::vector<Path>& files,
     return UpdateStatus::success;
 }
 
+// TODO: for a lot of file ,file access maybe slow
 bool is_outdated(const fs::path& file, const std::vector<Path>& inputs) {
     using std::filesystem::last_write_time;
 
@@ -61,7 +63,7 @@ bool is_outdated(const fs::path& file, const std::vector<Path>& inputs) {
 }
 
 bool build_target(std::shared_ptr<Target> target,
-                  std::function<void()> before_build) {
+                  std::function<void()> before_link) {
     std::filesystem::create_directories(target->build);
 
     // check deps has build
@@ -71,20 +73,8 @@ bool build_target(std::shared_ptr<Target> target,
             if (!build_target(build)) { return false; }
         }
     }
-    std::vector<fs::path> deps = target->units;
 
-    // check deps file is out of date
-    // TODO: .h affect
-    // use clang++ -MMD -MF foo.d -c foo.cpp -o foo.o
-    for (const auto& dep : target->deps) { deps.push_back(dep->GetTarget()); }
-    if (!is_outdated(target->GetTarget(), deps)) {
-        target->is_build = true;
-        logi("%s %s not need to update", target->name.c_str(),
-             Serialize(target->type).c_str());
-        return true;
-    }
-
-    if (before_build) before_build();
+    std::vector<fs::path> deps;
 
     // generate obj
     bool need_rebuild = false;
@@ -93,12 +83,11 @@ bool build_target(std::shared_ptr<Target> target,
     for (auto& unit : target->units) {
         fs::path obj =
             target->GetBuildPath(unit, target->build).replace_extension(".o");
+        deps.push_back(obj);
         std::filesystem::create_directories(obj.parent_path());
         objs.push_back(obj.generic_string());
-        if (!is_outdated(obj, {unit})) {
-            need_rebuild = true;
-            continue;
-        }
+        if (!is_outdated(obj, impl::get_deps(obj, target->root))) { continue; }
+        need_rebuild = true;
         rets.push_back(impl::compile_unit(*target, unit, objs.back()));
         if (rets.back().value.value_or(-1) != 0) {
             loge("compile %s failed,", unit.c_str());
@@ -106,6 +95,15 @@ bool build_target(std::shared_ptr<Target> target,
         }
     }
 
+    for (const auto& dep : target->deps) { deps.push_back(dep->GetTarget()); };
+    if (!need_rebuild && !is_outdated(target->GetTarget(), deps)) {
+        target->is_build = true;
+        logi("%s %s not need to update", target->name.c_str(),
+             Serialize(target->type).c_str());
+        return true;
+    }
+
+    if (before_link) before_link();
     // wiat compile complete
     cmd::wait_procs(rets);
     for (auto& ret : rets) {
@@ -218,19 +216,109 @@ cmd::Ret compile_unit(const Target& target, const fs::path& unit,
     compile.append_range(target.flags);
     Opt opt;
     opt.wait_return = false;
-    auto ret = cmd::run_cmd(compile, opt);
-    // TODO: this is a debug
-    if (ret.value.value_or(-1) != 0) { print_cmd(compile); }
-    return ret;
+    return cmd::run_cmd(compile, opt);
 }
 
-std::vector<fs::path> get_deps(const fs::path& obj) {
+std::vector<fs::path> get_deps(const fs::path& obj, const fs::path& root) {
     assert(obj.extension() == ".o");
     fs::path dep_file = Path(obj).replace_extension(".d");
     auto ret = read_file(dep_file);
-    std::string data = *ret;
-    std::vector<fs::path> deps;
+    if (!ret) return {};
+    std::vector<fs::path> deps = parse_dep(*ret, root);
+    return deps;
+}
+
+void gen_database(std::string& o, const std::string& directory,
+                  const cmd::Cmd& cmd, const std::string& file,
+                  const std::string& output) {
+    // unit
+    o += "{\n";
+
+    // directory
+    o += "  \"directory\": \"" + directory + "\",\n";
+    // arguments
+    o += "  \"arguments\": [";
+    bool is_first = true;
+    for (auto& arg : cmd) {
+        if (is_first) {
+            is_first = false;
+        } else {
+            o += ", ";
+        }
+        if (cmd::need_escape(arg)) {
+            o += cmd::escape_string(arg);
+        } else {
+            o += "\"" + std::string(arg) + "\"";
+        }
+    }
+    o += "],\n";
+
+    // o
+    o += "  \"file\": \"" + file + "\"";
+    // output
+    if (!output.empty()) {
+        o += ",\n";
+        o += "  \"output\": \"" + output + "\"\n";
+    }
+    o += "}";
+}
+
+void gen_database(std::string& database, std::shared_ptr<Target> target,
+                  bool append) {
+    std::map<std::shared_ptr<Target>, bool> map;
+    bool first = true;
+    auto pos = database.find_last_of("]");
+    if (pos != std::string::npos) {
+        database.erase(pos);
+        if (auto pos2 = database.find_last_of("}"); pos2 != std::string::npos) {
+            database.erase(pos2 + 1);
+            first = false;
+        }
+    }
+
+    auto serialize = [&](auto&& self, std::shared_ptr<Target> target) -> void {
+        if (map[target]) return;
+        for (auto& dep : target->deps) { self(self, dep); }
+        for (auto& unit : target->units) {
+            if (first) {
+                first = false;
+            } else {
+                database += ",\n";
+            }
+            std::string unit_path = unit.generic_string();
+            std::string obj =
+                Path(unit).replace_extension(".o").generic_string();
+            Cmd compile{target->tool_chain->GetCompiler(), "-c", unit_path,
+                        "-o", obj};
+            compile.append_range(target->flags);
+
+            impl::gen_database(database, target->root.generic_string(), compile,
+                               unit.filename().string(), obj);
+        }
+        map[target] = true;
+    };
+    serialize(serialize, target);
+    database += "\n]";
 }
 } // namespace impl
+
+void gen_database(std::shared_ptr<Target> target, const fs::path& path,
+                  bool append) {
+    std::map<std::shared_ptr<Target>, bool> map;
+    std::string database;
+    bool first = true;
+    if (append) {
+        database = read_file(path).value_or("[\n");
+    } else {
+        database = "[\n";
+    }
+
+    impl::gen_database(database, target, append);
+
+    if (!write_file(path, database)) {
+        loge("write file failed: %s", path.string().c_str());
+        return;
+    }
+}
 
 } // namespace csc
