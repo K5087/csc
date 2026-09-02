@@ -60,7 +60,7 @@ void handle_compile(const fs::path& csc, const fs::path& input,
 #ifdef _WIN32
             std::string shared = (shared_dir / "csc.dll").generic_string();
 #else
-            std::string shared = (shared / "csc.so").string();
+            std::string shared = (shared_dir / "csc.so").string();
 #endif // _WIN32
             std::vector<fs::path> libs{shared};
             args.emplace_back(shared);

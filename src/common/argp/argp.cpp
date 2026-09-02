@@ -35,7 +35,7 @@ void Parser::parse(int argc, char** argv) {
         switch (option.rule.boundary) {
             case Boundary::get_self: option.args.push_back(arg); break;
             case Boundary::one_arg:
-                if (i + 1 >= argc && is_opt(argv[i + 1])) {
+                if (i + 1 >= argc || is_opt(argv[i + 1])) {
                     throw std::invalid_argument(std::string(arg) +
                                                 "need one param!");
                 }

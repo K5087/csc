@@ -42,7 +42,7 @@ UpdateStatus update_bin(fs::path bin, const std::vector<Path>& files,
 
 #ifdef _WIN32
 #else
-    std::filesystem::remove(old_binary_path);
+    std::filesystem::remove(old_bin);
 #endif
     return UpdateStatus::success;
 }

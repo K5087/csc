@@ -21,7 +21,7 @@ namespace impl {
 bool check_procs() {
     bool result = false;
     for (auto iter = procs.begin(); iter != procs.end();) {
-        if (impl::is_running(*iter)) {
+        if (!impl::is_running(*iter)) {
             iter = procs.erase(iter);
             sem.release();
             result = true;

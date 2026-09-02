@@ -22,8 +22,9 @@ Proc create_proc(const Cmd& cmd, const Opt& opt) {
     STARTUPINFO si = {sizeof(si)};
     PROCESS_INFORMATION pi;
 
-    BOOL result = CreateProcess(NULL, GetCommandStr(cmd).data(), NULL, NULL,
-                                TRUE, 0, NULL, NULL, &si, &pi);
+    std::string command = GetCommandStr(cmd);
+    BOOL result = CreateProcess(NULL, command.data(), NULL, NULL, TRUE, 0, NULL,
+                                NULL, &si, &pi);
 
     if (!result) {
         error = GetLastError();

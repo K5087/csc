@@ -100,17 +100,17 @@ void handle_arg(int argc, char** argv) {
         if (fs::is_directory(output)) { output = output / name; }
     } else {
         if (dir.empty()) {
+            output = rsc::get::script_dir() / name;
+        } else {
             if (os::valid_name(dir))
-                output = rsc::get::script_dir() / name;
+                output = rsc::get::script_dir() / dir / name;
             else {
                 loge("%s is invalid dir name", dir.data());
                 return;
             }
-        } else {
-            output = rsc::get::script_dir() / dir / name;
         }
     }
-    handle_compile(input, output, use_link, use_static);
+    handle_compile(input, output, use_link, use_static, gen_data);
 }
 
 int main(int argc, char* argv[]) {
