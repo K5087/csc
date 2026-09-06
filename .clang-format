@@ -9,9 +9,9 @@ AccessModifierOffset:	-4
 # 开括号(开圆括号、开尖括号、开方括号)后的对齐: Align, DontAlign, AlwaysBreak(总是在开括号后换行)
 AlignAfterOpenBracket:	Align
 # 连续赋值时，对齐所有等号
-AlignConsecutiveAssignments:	true
+AlignConsecutiveAssignments:  false
 # 连续声明时，对齐的变量名
-AlignConsecutiveDeclarations: true
+AlignConsecutiveDeclarations: false
 # 对齐宏定义
 AlignConsecutiveMacros: AcrossEmptyLinesAndComments
 # 宏定义缩进`#`的位置 None、AfterHash、BeforeHash
@@ -97,23 +97,22 @@ BreakBeforeBinaryOperators:	None
 #   Mozilla(除枚举、函数、记录定义，与Attach类似), Stroustrup(除函数定义、catch、else，与Attach类似), 
 #   Allman(总是在大括号前换行), GNU(总是在大括号前换行，并对于控制语句的大括号增加额外的缩进), WebKit(在函数前换行), Custom
 #   注：这里认为语句块也属于函数
+
 BreakBeforeBraces:	Custom
 # 在三元运算符前换行
 BreakBeforeTernaryOperators:	false
  
 # 在构造函数的初始化列表的逗号前换行
 BreakConstructorInitializersBeforeComma:	false
-BreakConstructorInitializers: AfterColon
+BreakConstructorInitializers: BeforeColon
 PackConstructorInitializers: CurrentLine
 # 每行字符的限制，0表示没有限制
-ColumnLimit:	0
+ColumnLimit:	80
 # 描述具有特殊意义的注释的正则表达式，它不应该被分割为多行或以其它方式改变
 CommentPragmas:	'^ IWYU pragma:'
 CompactNamespaces: false
-# 构造函数的初始化列表要么都在同一行，要么都各自一行
-ConstructorInitializerAllOnOneLineOrOnePerLine:	false
 # 构造函数的初始化列表的缩进宽度
-ConstructorInitializerIndentWidth:	0
+ConstructorInitializerIndentWidth:	4
 # 延续的行的缩进宽度
 ContinuationIndentWidth:	4
 # 去除C++11的列表初始化的大括号{后和}前的空格

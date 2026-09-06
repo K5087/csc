@@ -45,3 +45,6 @@ build
 
 # back file
 *.exe.old
+
+# lsp
+compile_commands.json

@@ -10,40 +10,12 @@ Just call shell Command and other exec,may be add more feature.
 
 ## How To Use
 
-include file and write build command.
+include file and write execute command.(wait for change)
 
-```cpp
-//build.cpp
-#include "csc.hpp"
+> clang++ ./src/common/argp/argp.cpp ./src/common/cmd/cmd.cpp ./src/common/csc/csc.cpp ./src/common/csc/target.cpp ./src/common/csc/tool.cpp ./src/common/csc/tool_chain.cpp ./src/common/log/log.cpp ./src/common/rsc/rsc.cpp ./src/common/rsc/dev.cpp ./src/windows/cmd/cmd.cpp ./src/windows/csc/target.cpp ./src/windows/csc/tool_chain.cpp ./src/windows/rsc/os.cpp ./build.cpp -I./include -o build.exe -std=c++26 -luuid -lole32
 
-int main(int argc, char** argv) {
-    using namespace csc;
-    Cmd cmd;
-    try {
-        cmd.Append("clang++", "-o", "main", "main.cpp");
-        csc::run_cmd(cmd);
+## TODO
 
-    } catch (const std::exception& e) {
-        csc_log(CSC_ERRO, e.what());
-        return 1;
-    }
-}
-```
+use rsc as package manger (how to import package)
 
-```cpp
-//main.cpp
-#include <iostream>
-
-int main(int argc, char** argv) {
-    std::cout<<"Hello,World!\n";
-    return 0;
-}
-```
-
-> clang++ -std=c++23 build.cpp -o build
-
-> ./build
-
-> ./main
-
-current branch stop devlopment,new is in dev branch.
+impl cpp module compile(impl json parser or import other json lib)
