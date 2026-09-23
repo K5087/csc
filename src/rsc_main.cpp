@@ -1,6 +1,6 @@
 #include <argp/argp.h>
+#include <csc/csc.h>
 #include <csc/target.h>
-#include <csc/tool_chain.h>
 #include <log/log.h>
 #include <rsc/os.h>
 #include <rsc/rsc.h>
@@ -14,7 +14,7 @@ void handle_compile(const fs::path& input, const fs::path& output,
                     bool gen_data = false) {
     std::string input_file = input.generic_string();
     std::string output_file = output.generic_string();
-    if (!fs::exists(output)) {
+    if (!fs::exists(output) || is_outdated(output, {input})) {
         fs::path package_dir = rsc::get::package_dir("rsc");
         std::string csc =
             (package_dir / ("bin/csc" + std::string(get_extension()))).string();

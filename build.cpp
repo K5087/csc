@@ -82,12 +82,13 @@ int main(int argc, char* argv[]) {
     // build lib
     auto log = make_build("log");
     auto argp = make_build("argp");
+    auto json = make_build("json");
 
     auto cmd = make_build("cmd");
     cmd->AddDepend(log);
 
     auto csc = make_build("csc");
-    csc->AddDepends({log, cmd, argp});
+    csc->AddDepends({log, cmd, argp, json});
 
     auto rsc = make_build("rsc");
     rsc->searches = {"uuid", "ole32"};
@@ -117,6 +118,9 @@ int main(int argc, char* argv[]) {
     if (!build_target(csc_shared)) { return -1; }
     if (!build_target(rsc_shared)) { return -1; }
     gen_database(rsc_exe, current / "compile_commands.json");
+
+    if (!build->is_build) { return 0; }
+
     {
         // install
         std::vector<fs::path> bins;

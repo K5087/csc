@@ -103,4 +103,5 @@ std::string Serialize(TargetType type) {
         case TargetType::share: return "share";
     }
 }
+
 } // namespace csc

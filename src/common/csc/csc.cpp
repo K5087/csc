@@ -127,7 +127,7 @@ bool build_target(std::shared_ptr<Target> target,
              Serialize(target->type).c_str());
         return true;
     } else {
-        loge("%s build failed,", target->name.c_str(),
+        loge("%s build failed", target->name.c_str(),
              Serialize(target->type).c_str());
         return false;
     }
@@ -151,13 +151,24 @@ std::vector<std::string> make_compile_cmd(const std::vector<fs::path>& inputs,
 }
 
 namespace impl {
+void Append_Deps(std::vector<std::string> targets,
+                 std::shared_ptr<csc::Target> build) {
+    for (auto& dep : build->deps) {
+        if (dep->type == TargetType::arch) {
+            targets.push_back(dep->GetTarget());
+        }
+    }
+}
 
 bool link_exe(Target& info, const std::vector<std::string>& objs) {
     Cmd link{info.tool_chain->GetCompiler()};
 
     link.append_range(objs);
     std::vector<std::string> targets;
-    for (auto& build : info.deps) { targets.emplace_back(build->GetTarget()); }
+    for (auto& build : info.deps) {
+        targets.emplace_back(build->GetTarget());
+        Append_Deps(targets, build);
+    }
     for (auto& lib : info.searches) { targets.emplace_back("-l" + lib); }
     link.append_range(targets);
     link.emplace_back("-o");
@@ -191,7 +202,10 @@ bool link_dll(Target& info, const std::vector<std::string>& objs) {
 
     link.append_range(objs);
     std::vector<std::string> targets;
-    for (auto& build : info.deps) { targets.emplace_back(build->GetTarget()); }
+    for (auto& build : info.deps) {
+        targets.emplace_back(build->GetTarget());
+        Append_Deps(targets, build);
+    }
     for (auto& lib : info.searches) { targets.emplace_back("-l" + lib); }
     link.append_range(targets);
     link.emplace_back("-o");

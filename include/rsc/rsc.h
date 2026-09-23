@@ -1,5 +1,7 @@
 #pragma once
-#include <csc/csc.h>
+#include <filesystem>
+#include <string>
+#include <vector>
 
 namespace rsc {
 

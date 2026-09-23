@@ -3,6 +3,43 @@
 #include <cassert>
 #include <fstream>
 
+namespace json {
+bool encode(std::string& json, const csc::dep::Require& value) {
+    ENCODE_KEY_VALUE(json, "logic-name", value.logic_name);
+    json.append(",");
+    ENCODE_KEY_VALUE(json, "source-path", value.source_path);
+    return true;
+}
+
+bool encode(std::string& json, const csc::dep::Provide& value) {
+    ENCODE_KEY_VALUE(json, "is-interface", value.is_interface);
+    json.append(",");
+    ENCODE_KEY_VALUE(json, "logic-name", value.logic_name);
+    json.append(",");
+    ENCODE_KEY_VALUE(json, "source-path", value.source_path);
+    return true;
+}
+
+bool encode(std::string& json, const csc::dep::Rule& value) {
+    ENCODE_KEY_VALUE(json, "primary-output", value.primary_output);
+    json.append(",");
+    ENCODE_KEY_ARRAY(json, "provides", value.provides);
+    json.append(",");
+    ENCODE_KEY_ARRAY(json, "requires", value.require_files);
+    return true;
+}
+
+bool encode(std::string& json, const csc::dep::Info& value) {
+    ENCODE_KEY_VALUE(json, "revision", value.revision);
+    json.append(",");
+    ENCODE_KEY_ARRAY(json, "rules", value.rules);
+    json.append(",");
+    ENCODE_KEY_VALUE(json, "version", value.version);
+    return true;
+}
+
+} // namespace json
+
 namespace csc {
 
 std::vector<fs::path> find_file(const std::vector<fs::path>& paths,
