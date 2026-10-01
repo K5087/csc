@@ -1,4 +1,5 @@
 #include <csc/csc.h>
+#include <csc/depend.h>
 #include <csc/target.h>
 #include <csc/tool.h>
 #include <log/log.h>
@@ -8,6 +9,7 @@
 #include <cassert>
 #include <map>
 #include <ranges>
+#include <set>
 
 namespace csc {
 using namespace cmd;
@@ -127,7 +129,7 @@ bool build_target(std::shared_ptr<Target> target,
              Serialize(target->type).c_str());
         return true;
     } else {
-        loge("%s build failed", target->name.c_str(),
+        loge("%s %sbuild failed", target->name.c_str(),
              Serialize(target->type).c_str());
         return false;
     }
@@ -151,11 +153,11 @@ std::vector<std::string> make_compile_cmd(const std::vector<fs::path>& inputs,
 }
 
 namespace impl {
-void Append_Deps(std::vector<std::string> targets,
-                 std::shared_ptr<csc::Target> build) {
-    for (auto& dep : build->deps) {
+void Append_Deps(std::set<std::string>& deps, const csc::Target& target) {
+    for (auto& dep : target.deps) {
         if (dep->type == TargetType::arch) {
-            targets.push_back(dep->GetTarget());
+            deps.insert(dep->GetTarget());
+            Append_Deps(deps, *dep);
         }
     }
 }
@@ -164,16 +166,14 @@ bool link_exe(Target& info, const std::vector<std::string>& objs) {
     Cmd link{info.tool_chain->GetCompiler()};
 
     link.append_range(objs);
-    std::vector<std::string> targets;
-    for (auto& build : info.deps) {
-        targets.emplace_back(build->GetTarget());
-        Append_Deps(targets, build);
-    }
-    for (auto& lib : info.searches) { targets.emplace_back("-l" + lib); }
-    link.append_range(targets);
+    std::set<std::string> deps;
+    Append_Deps(deps, info);
+    for (auto& lib : info.searches) { deps.emplace("-l" + lib); }
+    link.append_range(deps);
     link.emplace_back("-o");
     auto target = info.GetTarget();
     link.push_back(target);
+
     if (run_cmd(link).value.value_or(-1) != 0) {
         loge("link %s failed", info.name.c_str());
         return false;
@@ -201,16 +201,14 @@ bool link_dll(Target& info, const std::vector<std::string>& objs) {
     link.emplace_back("-shared");
 
     link.append_range(objs);
-    std::vector<std::string> targets;
-    for (auto& build : info.deps) {
-        targets.emplace_back(build->GetTarget());
-        Append_Deps(targets, build);
-    }
-    for (auto& lib : info.searches) { targets.emplace_back("-l" + lib); }
-    link.append_range(targets);
+    std::set<std::string> deps;
+    Append_Deps(deps, info);
+    for (auto& lib : info.searches) { deps.emplace("-l" + lib); }
+    link.append_range(deps);
     link.emplace_back("-o");
     auto target = info.GetTarget();
     link.push_back(target);
+
     if (run_cmd(link).value.value_or(-1) != 0) {
         loge("link %s failed", info.name.c_str());
         return false;

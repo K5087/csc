@@ -37,6 +37,7 @@ void handle_compile(const fs::path& csc, const fs::path& input,
         // rsc common bin path
         auto package_dir =
             csc.parent_path().parent_path() / "package/rsc/current";
+        logc("%s", package_dir.c_str());
         // rsc package bin path
         if (!fs::exists(package_dir))
             package_dir = csc.parent_path().parent_path();
@@ -60,6 +61,7 @@ void handle_compile(const fs::path& csc, const fs::path& input,
 #ifdef _WIN32
             std::string shared = (shared_dir / "csc.dll").generic_string();
 #else
+            logc("%s", shared_dir.c_str());
             std::string shared = (shared_dir / "csc.so").string();
 #endif // _WIN32
             std::vector<fs::path> libs{shared};
@@ -78,9 +80,9 @@ void handle_compile(const fs::path& csc, const fs::path& input,
     compile.emplace_back("-std=c++26");
     if (gen_data) {
         std::string database = "[\n";
-        impl::gen_database(database,
-                           fs::absolute(input.parent_path()).generic_string(),
-                           compile, input_file, output_file);
+        fs::path parent_path = fs::absolute(input).parent_path();
+        impl::gen_database(database, parent_path.generic_string(), compile,
+                           input_file, output_file);
         database += "\n]";
         fs::path path = output.parent_path() / "compile_commands.json";
         if (!write_file(path, database)) {

@@ -1,21 +1,9 @@
 #include <csc/target.h>
 
 namespace csc {
-
-std::string Serialize(TargetType type, TargetFlavor flavor) {
-    switch (type) {
-        case TargetType::exec: return ".exe";
-        case TargetType::arch:
-            switch (flavor) {
-                case TargetFlavor::GNU: return ".a";
-                case TargetFlavor::MSVC: return ".lib";
-            };
-        case TargetType::share: return ".dll";
-    }
-}
-
 std::string Target::GetTarget() const {
-    return (build / (name + Serialize(type, flavor))).generic_string();
+    return (build / (name + std::string(get_extension(type, flavor))))
+        .generic_string();
 }
 
 Path Target::GetBuildPath(const Path& origin, const Path& new_root) {

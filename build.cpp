@@ -14,7 +14,11 @@ fs::path current = CURRENT_DIR;
 // fs::path current = "./";
 fs::path build_dir = current / "rsc_build";
 fs::path include_dir = current / "include";
+#ifdef _WIN32
 std::vector<std::string> flags = {"-std=c++26"};
+#else
+std::vector<std::string> flags = {"-std=c++26", "-fPIC"};
+#endif
 std::shared_ptr<LLVM> llvm = std::make_shared<LLVM>();
 
 /* project path */
@@ -36,6 +40,7 @@ Build make_build(const std::string& name) {
     target->units.append_range(sources);
     target->flags.append_range(flags);
     target->AddIncludes({current / "include"});
+
     return target;
 }
 
@@ -91,7 +96,9 @@ int main(int argc, char* argv[]) {
     csc->AddDepends({log, cmd, argp, json});
 
     auto rsc = make_build("rsc");
+#ifdef _WIN32
     rsc->searches = {"uuid", "ole32"};
+#endif // _WIN32
     rsc->AddDepends({log, argp, cmd, csc});
 
     auto csc_shared = make_shared(csc);

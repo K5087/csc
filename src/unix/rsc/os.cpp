@@ -2,6 +2,7 @@
 
 #include <pwd.h>
 #include <unistd.h>
+#include <vector>
 
 namespace os {
 fs::path get_home_dir() {

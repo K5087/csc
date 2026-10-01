@@ -13,9 +13,7 @@ Proc create_proc(const Cmd& cmd, const Opt& opt) {
     if (cpid == 0) {
         std::vector<char*> argv;
         argv.reserve(cmd.size() + 1);
-        for (auto& s : cmd) {
-            argv.push_back(const_cast<char*>(s.c_str()));
-        }
+        for (auto& s : cmd) { argv.push_back(const_cast<char*>(s.data())); }
         argv.push_back(nullptr);
         execvp(argv[0], argv.data());
         perror("execvp");
@@ -25,7 +23,7 @@ Proc create_proc(const Cmd& cmd, const Opt& opt) {
 }
 
 bool is_running(Proc proc) noexcept {
-    int   status = 0;
+    int status = 0;
     pid_t result = waitpid(proc, &status, WNOHANG | WUNTRACED | WCONTINUED);
     if (result == 0)
         return true;
@@ -44,9 +42,7 @@ std::optional<int> wait_proc(Proc proc) noexcept {
         error = errno;
         return std::nullopt;
     }
-    if (WIFEXITED(status)) {
-        return WEXITSTATUS(status);
-    }
+    if (WIFEXITED(status)) { return WEXITSTATUS(status); }
     return std::nullopt;
 }
 } // namespace cmd::impl
