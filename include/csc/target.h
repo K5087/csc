@@ -54,6 +54,7 @@ public:
     std::vector<std::string> searches = {};
 
     bool is_build = false;
+    bool print_cmd = false;
 
     // convert to absolute path and add to units
     void AddSource(const Path& source);

@@ -143,7 +143,7 @@ int main(int argc, char* argv[]) {
 
         static_libs.append_range(std::vector<fs::path>{
             log->GetTarget(), argp->GetTarget(), csc->GetTarget(),
-            cmd->GetTarget(), rsc->GetTarget()});
+            cmd->GetTarget(), rsc->GetTarget(), json->GetTarget()});
 
         shared_libs.emplace_back(csc_shared->GetTarget());
         shared_libs.emplace_back(rsc_shared->GetTarget());

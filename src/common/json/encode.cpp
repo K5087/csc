@@ -6,25 +6,25 @@
 #include <concepts>
 #include <typeinfo>
 
-#define ENCODE_FUNC_IMPL(type)                                     \
-    bool encode(std::string& json, build_type<type> value) {       \
-        bool status = true;                                        \
-        std::size_t old = json.size();                             \
-                                                                   \
-        json.resize_and_overwrite(                                 \
-            old + max_chars<type>,                                 \
-            [old, &value, &status](char* data, std::size_t size) { \
-                std::to_chars_result ret =                         \
-                    std::to_chars(data + old, data + size, value); \
-                if (ret.ec != std::errc()) {                       \
-                    loge("encode %s failed", typeid(type).name()); \
-                    status = false;                                \
-                    return old;                                    \
-                }                                                  \
-                return static_cast<std::size_t>(ret.ptr - data);   \
-            });                                                    \
-                                                                   \
-        return status;                                             \
+#define ENCODE_FUNC_IMPL(type)                                           \
+    bool encode(std::string& json, build_type<type> value, encode_tag) { \
+        bool status = true;                                              \
+        std::size_t old = json.size();                                   \
+                                                                         \
+        json.resize_and_overwrite(                                       \
+            old + max_chars<type>,                                       \
+            [old, &value, &status](char* data, std::size_t size) {       \
+                std::to_chars_result ret =                               \
+                    std::to_chars(data + old, data + size, value);       \
+                if (ret.ec != std::errc()) {                             \
+                    loge("encode %s failed", typeid(type).name());       \
+                    status = false;                                      \
+                    return old;                                          \
+                }                                                        \
+                return static_cast<std::size_t>(ret.ptr - data);         \
+            });                                                          \
+                                                                         \
+        return status;                                                   \
     }
 
 namespace json {
@@ -43,14 +43,19 @@ constexpr std::size_t max_chars<T> =
 
 ENCODE_FUNC_IMPL(int)
 
-bool encode(std::string& json, const bool value) {
+bool encode(std::string& json, const bool value, encode_tag) {
     json.append(value ? "true" : "false");
     return true;
 }
+
+bool encode(std::string& json, const char* value, encode_tag) {
+    return encode(json, std::string(value));
+}
+
 ENCODE_FUNC_IMPL(float)
 ENCODE_FUNC_IMPL(double)
 
-bool encode(std::string& json, const std::string& value) {
+bool encode(std::string& json, const std::string& value, encode_tag) {
     json.reserve(json.size() + 2 + value.size());
     json.append("\"");
     json.append(value);
@@ -58,7 +63,7 @@ bool encode(std::string& json, const std::string& value) {
     return true;
 }
 
-bool encode(std::string& json, const std::filesystem::path& value) {
+bool encode(std::string& json, const std::filesystem::path& value, encode_tag) {
     encode(json, value.generic_string());
     return true;
 }

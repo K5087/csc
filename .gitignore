@@ -48,3 +48,9 @@ build
 
 # lsp
 compile_commands.json
+
+# build
+rsc_build/
+
+# test
+test/

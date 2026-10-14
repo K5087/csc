@@ -174,6 +174,7 @@ bool link_exe(Target& info, const std::vector<std::string>& objs) {
     auto target = info.GetTarget();
     link.push_back(target);
 
+    if (info.print_cmd) { print_cmd(link); }
     if (run_cmd(link).value.value_or(-1) != 0) {
         loge("link %s failed", info.name.c_str());
         return false;
@@ -188,6 +189,7 @@ bool link_lib(Target& info, const std::vector<std::string>& objs) {
     archive.push_back(target);
     archive.append_range(objs);
 
+    if (info.print_cmd) { print_cmd(archive); }
     if (run_cmd(archive).value.value_or(-1) != 0) {
         loge("archive %s failed", info.name.c_str());
         return false;
@@ -209,6 +211,7 @@ bool link_dll(Target& info, const std::vector<std::string>& objs) {
     auto target = info.GetTarget();
     link.push_back(target);
 
+    if (info.print_cmd) { print_cmd(link); }
     if (run_cmd(link).value.value_or(-1) != 0) {
         loge("link %s failed", info.name.c_str());
         return false;
@@ -228,6 +231,7 @@ cmd::Ret compile_unit(const Target& target, const fs::path& unit,
     compile.append_range(target.flags);
     Opt opt;
     opt.wait_return = false;
+    if (target.print_cmd) { print_cmd(compile); }
     return cmd::run_cmd(compile, opt);
 }
 

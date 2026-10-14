@@ -37,7 +37,7 @@ void handle_compile(const fs::path& csc, const fs::path& input,
         // rsc common bin path
         auto package_dir =
             csc.parent_path().parent_path() / "package/rsc/current";
-        logc("%s", package_dir.c_str());
+        logc("%s", package_dir.generic_string().c_str());
         // rsc package bin path
         if (!fs::exists(package_dir))
             package_dir = csc.parent_path().parent_path();
@@ -49,10 +49,9 @@ void handle_compile(const fs::path& csc, const fs::path& input,
         if (use_static) {
             auto static_dir = package_dir / "lib/static";
             std::vector<fs::path> libs{
-                static_dir / "log.a",
-                static_dir / "argp.a",
-                static_dir / "cmd.a",
-                static_dir / "csc.a",
+                static_dir / "log.a",  static_dir / "argp.a",
+                static_dir / "cmd.a",  static_dir / "csc.a",
+                static_dir / "json.a",
             };
             for (auto& lib : libs) { args.emplace_back(lib.generic_string()); }
             libs.append_range(links);

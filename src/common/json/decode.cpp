@@ -2,27 +2,32 @@
 #include <log/log.h>
 
 #include <charconv>
+#include <string>
 
-#define DECODE_FUNC_IMPL(type)                                \
-    bool decode(std::string_view view, type& value) {         \
-        std::from_chars_result res =                          \
-            std::from_chars(view.begin(), view.end(), value); \
-        if (res.ec != std::errc()) {                          \
-            loge("decode %s failed", typeid(type).name());    \
-        }                                                     \
-        return true;                                          \
+#define DECODE_FUNC_IMPL(type)                                  \
+    bool decode(const Value& value, type& payload) {            \
+        auto view = value.get_view();                           \
+        std::from_chars_result res =                            \
+            std::from_chars(view.begin(), view.end(), payload); \
+        if (res.ec != std::errc()) {                            \
+            loge("decode %s failed: %s", typeid(type).name(),   \
+                 std::string(view).c_str());                    \
+        }                                                       \
+        return true;                                            \
     }
 
 namespace json {
 DECODE_FUNC_IMPL(int);
 
-bool decode(std::string_view view, bool& value) {
+bool decode(const Value& value, bool& payload) {
+    auto view = value.get_view();
     if (view == "true") {
-        value = true;
+        payload = true;
     } else if (view == "false") {
-        value = false;
+        payload = false;
     } else {
-        loge("decode %s failed", typeid(bool).name());
+        loge("decode %s failed: %s", typeid(bool).name(),
+             std::string(view).c_str());
         return false;
     }
     return true;
@@ -31,24 +36,13 @@ bool decode(std::string_view view, bool& value) {
 DECODE_FUNC_IMPL(float);
 DECODE_FUNC_IMPL(double);
 
-bool decode(std::string_view view, std::string& value) {
-    if (view.starts_with("\"") && view.ends_with("\"") && view.size() > 2) {
-        value = view.substr(1, view.size() - 2);
-    } else {
-        loge("decode %s failed", typeid(std::string).name());
-        return false;
-    }
-
+bool decode(const Value& value, std::string& payload) {
+    payload = value.get_view();
     return true;
 }
 
-bool decode(std::string_view view, std::filesystem::path& value) {
-    if (view.starts_with("\"") && view.ends_with("\"") && view.size() > 2) {
-        value = view.substr(1, view.size() - 2);
-    } else {
-        loge("decode %s failed", typeid(std::string).name());
-        return false;
-    }
+bool decode(const Value& value, std::filesystem::path& payload) {
+    payload = value.get_view();
     return true;
 }
 } // namespace json

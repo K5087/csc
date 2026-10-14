@@ -3,5 +3,8 @@
 
 #include <json/decode.h>
 #include <json/encode.h>
+#include <json/parse.h>
 
-namespace json {} // namespace json
+namespace json {
+using string = std::string;
+}
