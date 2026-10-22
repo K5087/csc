@@ -11,8 +11,6 @@ class Target;
 namespace fs = std::filesystem;
 using Path = std::filesystem::path;
 
-enum class UpdateStatus { success, noneed, failed };
-
 /**
  * @brief use input includes and output make compile command(default add c++26
  * flag)
@@ -28,12 +26,10 @@ std::vector<std::string> make_compile_cmd(const std::vector<fs::path>& inputs,
  * @brief update bin by cmd
  *
  * @param bin binary file path
- * @param files which files will be compare with bin's date
  * @param cmd commands to update
- * @return success noneed failed
+ * @return update success or failed
  */
-UpdateStatus update_bin(fs::path bin, const std::vector<fs::path>& files,
-                        const cmd::Cmd& cmd);
+bool update_bin(fs::path bin, const cmd::Cmd& cmd);
 
 /**
  * @brief Check whether a file is out of date.
@@ -53,7 +49,6 @@ bool is_outdated(const std::filesystem::path& file,
 bool build_target(std::shared_ptr<Target> target,
                   std::function<void()> before_link = nullptr);
 
-// TODO: have no impl
 /* build target using dep Graph */
 bool build_graph(std::shared_ptr<Target> target,
                  std::function<void()> before_link = nullptr);
@@ -68,6 +63,7 @@ namespace impl {
 std::vector<fs::path> get_deps(const fs::path& obj, const fs::path& root);
 cmd::Ret compile_unit(const Target& target, const fs::path& unit,
                       const std::string& obj);
+
 bool link_exe(Target& info, const std::vector<std::string>& objs);
 bool link_lib(Target& info, const std::vector<std::string>& objs);
 bool link_dll(Target& info, const std::vector<std::string>& objs);

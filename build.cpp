@@ -3,6 +3,8 @@
 #include <log/log.h>
 #include <rsc/rsc.h>
 
+#include <argp/argp.h>
+
 using namespace csc;
 namespace fs = std::filesystem;
 
@@ -11,12 +13,13 @@ const char* version = "1.0.0";
 
 /* predefine path */
 fs::path current = CURRENT_DIR;
-// fs::path current = "./";
-fs::path build_dir = current / "rsc_build";
+fs::path build_dir = current / "build";
 fs::path include_dir = current / "include";
 #ifdef _WIN32
 std::vector<std::string> flags = {"-std=c++26"};
 #else
+// cmd lib have thread local variable,need -fpic generate position independent
+// code
 std::vector<std::string> flags = {"-std=c++26", "-fPIC"};
 #endif
 std::shared_ptr<LLVM> llvm = std::make_shared<LLVM>();
@@ -31,6 +34,9 @@ std::string platform = "unix";
 
 fs::path platform_source = current / "src" / platform;
 
+bool gen_debug = false;
+bool print_command = false;
+
 Build make_build(const std::string& name) {
     auto target = make::static_target(name);
     target->build = build_dir;
@@ -40,6 +46,7 @@ Build make_build(const std::string& name) {
     target->units.append_range(sources);
     target->flags.append_range(flags);
     target->AddIncludes({current / "include"});
+    if (print_command) { target->print_cmd = true; }
 
     return target;
 }
@@ -84,6 +91,20 @@ bool update_build(int argc, char** argv, std::shared_ptr<Target> build) {
 }
 
 int main(int argc, char* argv[]) {
+    argp::Parser parser;
+    parser.add_opt({"-p"}, "print command str", argp::Boundary::get_self);
+    parser.add_opt({"-d"}, "build with debug info", argp::Boundary::get_self);
+    parser.add_opt({"-i"}, "install in system path", argp::Boundary::get_self);
+
+    parser.parse(argc, argv);
+    gen_debug = !parser.get_args("-d").empty();
+    bool install = !parser.get_args("-i").empty();
+    print_command = !parser.get_args("-p").empty();
+    if (gen_debug) {
+        flags.emplace_back("-g");
+        flags.emplace_back("-gdwarf-4");
+    }
+
     // build lib
     auto log = make_build("log");
     auto argp = make_build("argp");
@@ -128,8 +149,8 @@ int main(int argc, char* argv[]) {
 
     if (!build->is_build) { return 0; }
 
-    {
-        // install
+    if (install) {
+        logi("start install");
         std::vector<fs::path> bins;
         std::vector<fs::path> includes;
         std::vector<fs::path> static_libs;
@@ -152,6 +173,8 @@ int main(int argc, char* argv[]) {
         rsc::install("rsc", version, includes, bins, static_libs, shared_libs);
         rsc::set_current("rsc", version);
         rsc::create_shim("rsc", bins, shared_libs, version);
+        logi("install complete");
     }
+
     return 0;
 }

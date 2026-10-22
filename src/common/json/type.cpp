@@ -5,7 +5,7 @@ namespace json {
     auto ptr = std::get_if<type>(&data);                              \
     if (!ptr) {                                                       \
         throw json_error(std::string("Value contains type is not ") + \
-                         typeid(type).name());                        \
+                         typeid(type).name() + get_view());           \
     };                                                                \
     return *ptr;
 

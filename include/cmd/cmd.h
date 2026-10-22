@@ -43,8 +43,8 @@ std::optional<int> wait_proc(Proc proc) noexcept;
 } // namespace impl
 
 struct Ret {
-    impl::Proc proc;
-    std::optional<int> value;
+    impl::Proc proc = 0;
+    std::optional<int> value = std::nullopt;
 };
 
 // check string_view whether need escape
@@ -57,6 +57,8 @@ std::string escape_string(std::string_view view);
 Ret run_cmd(const Cmd& cmd, Opt opt = {}) noexcept;
 
 // wait procs until all return
-void wait_procs(std::vector<Ret>& procs);
+void wait_procs(std::vector<Ret>& rets);
+
+std::optional<std::size_t> wait_any(std::vector<Ret>& procs);
 
 } // namespace cmd

@@ -5,6 +5,8 @@
 #include <csc/tool_chain.h>
 #include <log/log.h>
 
+#include "csc/debug.hpp"
+
 using namespace csc;
 namespace fs = std::filesystem;
 
@@ -27,7 +29,8 @@ std::string serialize(const std::vector<fs::path>& paths) {
 void handle_compile(const fs::path& csc, const fs::path& input,
                     const fs::path& output, std::vector<std::string_view> links,
                     bool link = false, bool use_static = false,
-                    bool gen_data = false) {
+                    bool gen_data = false, bool print = false,
+                    bool debug_info = false) {
     std::string input_file = input.generic_string();
     std::string output_file = output.generic_string();
 
@@ -37,7 +40,6 @@ void handle_compile(const fs::path& csc, const fs::path& input,
         // rsc common bin path
         auto package_dir =
             csc.parent_path().parent_path() / "package/rsc/current";
-        logc("%s", package_dir.generic_string().c_str());
         // rsc package bin path
         if (!fs::exists(package_dir))
             package_dir = csc.parent_path().parent_path();
@@ -60,7 +62,6 @@ void handle_compile(const fs::path& csc, const fs::path& input,
 #ifdef _WIN32
             std::string shared = (shared_dir / "csc.dll").generic_string();
 #else
-            logc("%s", shared_dir.c_str());
             std::string shared = (shared_dir / "csc.so").string();
 #endif // _WIN32
             std::vector<fs::path> libs{shared};
@@ -92,11 +93,14 @@ void handle_compile(const fs::path& csc, const fs::path& input,
         args.push_back("-DCSC_GEN_DATABASE=" + path.generic_string());
         compile.emplace_back(args.back());
     }
+    if (debug_info) {
+        compile.emplace_back("-g");
+        compile.emplace_back("-gdwarf-4");
+    }
 
 skip_gen:
-
-    if (csc::update_bin(output, {input}, compile) ==
-        csc::UpdateStatus::failed) {
+    if (print) { print_cmd(compile); }
+    if (cmd::run_cmd(compile).value.value_or(-1) != 0) {
         loge("build %s failed", output.filename().string().c_str());
         return;
     }
@@ -119,6 +123,9 @@ void handle_arg(int argc, char** argv) {
                    argp::Boundary::get_self);
     parser.add_opt({"-g"}, "generate compile_command.json, will override file",
                    argp::Boundary::get_self);
+    parser.add_opt({"-d"}, "generate with debug info",
+                   argp::Boundary::get_self);
+    parser.add_opt({"-p"}, "print commands str", argp::Boundary::get_self);
     parser.add_opt({"-o", "--output"}, "output exec file at dir or path",
                    argp::Boundary::one_arg);
     parser.add_opt({"-L"}, "link others lib(use path)",
@@ -154,6 +161,9 @@ void handle_arg(int argc, char** argv) {
     bool use_link = !parser.get_args("-l").empty();
     bool use_static = !parser.get_args("-s").empty();
     bool gen_data = !parser.get_args("-g").empty();
+    bool debug_info = !parser.get_args("-d").empty();
+
+    bool print = !parser.get_args("-p").empty();
     Path output = parser.get_arg("-o", "");
 
     if (output.empty()) {
@@ -172,7 +182,7 @@ void handle_arg(int argc, char** argv) {
     std::vector<std::string_view> links = parser.get_args("-L");
 
     handle_compile(argv[0], input, output, links, use_link, use_static,
-                   gen_data);
+                   gen_data, print, debug_info);
 }
 
 int main(int argc, char* argv[]) {

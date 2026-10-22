@@ -72,7 +72,7 @@ public:
         auto ptr = std::get_if<T>(&data);
         if (!ptr) {
             throw json_error(std::string("Value contains type is not ") +
-                             typeid(T).name());
+                             typeid(T).name() + get_view());
         };
         return *ptr;
     }
@@ -82,7 +82,7 @@ public:
         auto ptr = std::get_if<T>(&data);
         if (!ptr) {
             throw json_error(std::string("Value contains type is not ") +
-                             typeid(T).name());
+                             typeid(T).name() + get_view());
         };
         return *ptr->view;
     }

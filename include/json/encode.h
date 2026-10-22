@@ -7,11 +7,21 @@
 /*
  *  only support base type, container not support, reduce template number
  */
+#ifdef JSON_ERROR_HANDLE
+    #define ENCODE_KEY_VALUE(json, key, value)        \
+        if (!encode(json, key)) { JSON_ERROR_HANDLE } \
+        json.append(":");                             \
+        if (!encode(json, value)) { JSON_ERROR_HANDLE }
 
-#define ENCODE_KEY_VALUE(json, key, value) \
-    encode(json, key);                     \
-    json.append(":");                      \
-    encode(json, value);
+#else
+    #define ENCODE_KEY_VALUE(json, key, value) \
+        encode(json, key);                     \
+        json.append(":");                      \
+        encode(json, value);
+
+#endif
+#define ENCODE_KEY_OPTIONAL(json, key, value, expr) \
+    if (expr) { ENCODE_KEY_VALUE(json, key, value) }
 
 #define ENCODE_FUNC(type) \
     bool encode(std::string& json, build_type<type> value, encode_tag = {});

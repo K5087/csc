@@ -8,6 +8,24 @@
  *  only support base type, container not support, reduce template number
  */
 
+#ifdef JSON_ERROR_HANDLE
+    #define DECODE_KEY_VALUE(object, key, value) \
+        if (!decode(object[key], value)) { JSON_ERROR_HANDLE }
+
+    #define DECODE_KEY_OPTIONAL(object, key, value)               \
+        if (auto __payload = object.find(key); __payload) {       \
+            if (!decode(*__payload, value)) { JSON_ERROR_HANDLE } \
+        }
+#else
+    #define DECODE_KEY_VALUE(object, key, value) \
+        decode(object[key], value);
+
+    #define DECODE_KEY_OPTIONAL(object, key, value)         \
+        if (auto __payload = object.find(key); __payload) { \
+            decode(*__payload, value);                      \
+        }
+#endif
+
 #define DECODE_FUNC(type) bool decode(const Value& value, type& payload);
 
 namespace json {

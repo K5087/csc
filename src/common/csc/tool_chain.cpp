@@ -4,6 +4,7 @@ namespace csc {
 LLVM::LLVM() {
     compiler = "clang++";
     archiver = "llvm-ar";
+    scanner = "clang-scan-deps";
 }
 
 std::string_view get_default_compiler() {

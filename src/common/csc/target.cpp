@@ -6,7 +6,7 @@ std::string Target::GetTarget() const {
         .generic_string();
 }
 
-Path Target::GetBuildPath(const Path& origin, const Path& new_root) {
+Path Target::GetBuildPath(const Path& origin, const Path& new_root) const {
     Path relative = std::filesystem::relative(origin, root);
     return new_root / relative;
 }

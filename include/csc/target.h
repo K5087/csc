@@ -35,7 +35,7 @@ public:
 
 public:
     std::string GetTarget() const;
-    Path GetBuildPath(const Path& origin, const Path& new_root);
+    Path GetBuildPath(const Path& origin, const Path& new_root) const;
 
 public:
     Path root;  // 项目根目录

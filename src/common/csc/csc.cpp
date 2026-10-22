@@ -1,5 +1,6 @@
 #include <csc/csc.h>
 #include <csc/depend.h>
+#include <csc/graph.h>
 #include <csc/target.h>
 #include <csc/tool.h>
 #include <log/log.h>
@@ -14,31 +15,31 @@
 namespace csc {
 using namespace cmd;
 
-UpdateStatus update_bin(fs::path bin, const std::vector<Path>& files,
-                        const cmd::Cmd& cmd) {
-    fs::path old_bin = bin;
-    old_bin += ".old";
+bool update_bin(fs::path bin, const cmd::Cmd& cmd) {
 #ifdef _WIN32
     if (bin.extension() != ".exe") { bin.replace_extension(get_extension()); }
 #endif // _WIN32
+    fs::path old_bin = bin;
+    old_bin += ".old";
     bool exist = std::filesystem::exists(bin);
     if (exist) {
-        bool need_rebuild = is_outdated(bin, files);
-        if (!need_rebuild) { return UpdateStatus::noneed; }
         std::filesystem::rename(bin, old_bin);
+    } else {
+        loge("%s not exist", bin.generic_string().c_str());
+        return false;
     }
 
     logi("update build program start");
     if (cmd.empty()) {
         loge("have no default compile command");
-        return UpdateStatus::failed;
+        return false;
     }
 
     if (run_cmd(cmd).value.value_or(-1) != 0) {
         loge("compile build script failed");
 
         if (exist) { std::filesystem::rename(old_bin, bin); }
-        return UpdateStatus::failed;
+        return false;
     }
     logi("update build program success");
 
@@ -46,7 +47,7 @@ UpdateStatus update_bin(fs::path bin, const std::vector<Path>& files,
 #else
     std::filesystem::remove(old_bin);
 #endif
-    return UpdateStatus::success;
+    return true;
 }
 
 // TODO: for a lot of file ,file access maybe slow
@@ -78,7 +79,7 @@ bool build_target(std::shared_ptr<Target> target,
 
     std::vector<fs::path> deps;
 
-    // generate obj
+    // generate obj and depend file
     bool need_rebuild = false;
     std::vector<Ret> rets = {};
     std::vector<std::string> objs = {};
@@ -86,9 +87,9 @@ bool build_target(std::shared_ptr<Target> target,
         fs::path obj =
             target->GetBuildPath(unit, target->build).replace_extension(".o");
         deps.push_back(obj);
-        std::filesystem::create_directories(obj.parent_path());
         objs.push_back(obj.generic_string());
         if (!is_outdated(obj, impl::get_deps(obj, target->root))) { continue; }
+        std::filesystem::create_directories(obj.parent_path());
         need_rebuild = true;
         rets.push_back(impl::compile_unit(*target, unit, objs.back()));
         if (rets.back().value.value_or(-1) != 0) {
@@ -135,6 +136,31 @@ bool build_target(std::shared_ptr<Target> target,
     }
 }
 
+bool build_graph(std::shared_ptr<Target> target,
+                 std::function<void()> before_link) {
+    std::filesystem::create_directories(target->build);
+    // check deps has build
+    for (auto& build : target->deps) {
+        if (!build->is_build) {
+            // generate deps
+            if (!build_graph(build)) { return false; }
+        }
+    }
+    Graph graph(*target);
+    bool ret = graph.build();
+    if (ret) {
+        target->is_build = true;
+        logi("%s %s build success", target->name.c_str(),
+             Serialize(target->type).c_str());
+        return true;
+    } else {
+        loge("%s %s build failed", target->name.c_str(),
+             Serialize(target->type).c_str());
+        return false;
+    }
+    return ret;
+}
+
 std::vector<std::string> make_compile_cmd(const std::vector<fs::path>& inputs,
                                           const std::vector<fs::path>& includes,
                                           const fs::path& output) {
@@ -164,7 +190,6 @@ void Append_Deps(std::set<std::string>& deps, const csc::Target& target) {
 
 bool link_exe(Target& info, const std::vector<std::string>& objs) {
     Cmd link{info.tool_chain->GetCompiler()};
-
     link.append_range(objs);
     std::set<std::string> deps;
     Append_Deps(deps, info);
@@ -301,15 +326,19 @@ void gen_database(std::string& database, std::shared_ptr<Target> target,
             } else {
                 database += ",\n";
             }
-            std::string unit_path = unit.generic_string();
+            std::string unit_path =
+                fs::relative(unit, target->root).generic_string();
             std::string obj =
-                Path(unit).replace_extension(".o").generic_string();
+                fs::relative(target->GetBuildPath(unit, target->build)
+                                 .replace_extension(".o"),
+                             target->root)
+                    .generic_string();
             Cmd compile{target->tool_chain->GetCompiler(), "-c", unit_path,
                         "-o", obj};
             compile.append_range(target->flags);
 
             impl::gen_database(database, target->root.generic_string(), compile,
-                               unit.filename().string(), obj);
+                               unit_path, obj);
         }
         map[target] = true;
     };

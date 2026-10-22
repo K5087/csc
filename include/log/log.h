@@ -13,22 +13,41 @@ enum class Level {
 
 const char* tostring(Level level);
 
-namespace impl {
-
-void log(Level level, const char* fmt, va_list args);
-
-} // namespace impl
-
-void log(Level level, const char* fmt, ...);
+void log_level(Level level, const char* fmt, va_list args);
 
 } // namespace logger
 
+/**
+ * @brief log something
+ *
+ * @param fmt
+ */
 void log(const char* fmt, ...);
 
+/**
+ * @brief log level code
+ *
+ * @param fmt
+ */
 void logc(const char* fmt, ...);
 
+/**
+ * @brief log level info
+ *
+ * @param fmt
+ */
 void logi(const char* fmt, ...);
 
+/**
+ * @brief log level warning
+ *
+ * @param fmt
+ */
 void logw(const char* fmt, ...);
 
+/**
+ * @brief log level error
+ *
+ * @param fmt
+ */
 void loge(const char* fmt, ...);

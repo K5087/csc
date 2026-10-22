@@ -50,15 +50,45 @@ std::optional<int> wait_proc(Proc proc) noexcept {
         error = GetLastError();
         return std::nullopt;
     }
-    DWORD exit_status;
-    if (!GetExitCodeProcess(proc, &exit_status)) {
+    DWORD exit_code;
+    if (!GetExitCodeProcess(proc, &exit_code)) {
         error = GetLastError();
         return std::nullopt;
     }
 
     CloseHandle(proc);
-    return exit_status;
+    return exit_code;
 }
 
 } // namespace impl
+
+std::optional<std::size_t> wait_any(std::vector<Ret>& rets) {
+    if (rets.empty() || rets.size() > MAXIMUM_WAIT_OBJECTS) {
+        loge("rets can't be empty or size cant't more than 64");
+        return std::nullopt;
+    }
+    std::vector<impl::Proc> procs;
+    procs.reserve(rets.size());
+    for (auto& i : rets) { procs.push_back(i.proc); }
+    auto result =
+        WaitForMultipleObjects(procs.size(), procs.data(), FALSE, INFINITE);
+    if (result == WAIT_FAILED) {
+        error = GetLastError();
+        return std::nullopt;
+    }
+    if (result >= WAIT_OBJECT_0 && result < WAIT_OBJECT_0 + procs.size()) {
+        std::size_t index = result - WAIT_OBJECT_0;
+
+        DWORD exit_code;
+
+        if (!GetExitCodeProcess(procs[index], &exit_code)) {
+            rets[index].value = exit_code;
+        }
+
+        CloseHandle(procs[index]);
+
+        return index;
+    }
+    return std::nullopt;
+}
 } // namespace cmd

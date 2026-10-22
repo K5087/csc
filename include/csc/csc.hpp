@@ -69,7 +69,8 @@ inline void update_self(int argc, char** argv,
                         const cmd::Cmd& cmd = {}, bool exec_new = true,
                         bool fail_exit = true) {
     fs::path bin = argv[0];
-    UpdateStatus status = UpdateStatus::failed;
+    bool status = false;
+    if (!is_outdated(bin, files)) { return; }
     if (cmd.empty()) {
         cmd::Cmd temp;
         std::vector<fs::path> inputs = files;
@@ -88,25 +89,21 @@ inline void update_self(int argc, char** argv,
         auto macros = get_predefine_macro();
         temp.append_range(macros);
 
-        status = update_bin(bin, files, temp);
+        status = update_bin(bin, temp);
     } else {
-        status = update_bin(bin, files, cmd);
+        status = update_bin(bin, cmd);
     }
-    switch (status) {
-        case UpdateStatus::success:
-            if (exec_new) {
-                cmd::Cmd exec;
-                for (int i = 0; i < argc; i++) { exec.push_back(argv[i]); }
-                cmd::run_cmd(exec);
+    if (status) {
+        if (exec_new) {
+            cmd::Cmd exec;
+            for (int i = 0; i < argc; i++) { exec.push_back(argv[i]); }
+            cmd::run_cmd(exec);
 
-                // no matter exit is what,when exec_new, old alwase exit
-                std::exit(0);
-            }
-            break;
-        case csc::UpdateStatus::noneed: break;
-        case csc::UpdateStatus::failed:
-            if (fail_exit) { std::exit(0); }
-            break;
+            // no matter exit is what,when exec_new, old alwase exit
+            std::exit(0);
+        }
+    } else {
+        if (fail_exit) { std::exit(0); }
     }
 }
 
@@ -118,7 +115,7 @@ inline void update_self(int argc, char** argv,
  * @param path compile_commands.json file path
  */
 inline void update_database(std::shared_ptr<Target> target,
-                            const fs::path& path) {
+                            const fs::path& path = "./compile_commands.json") {
     std::string database = csc_gen_database;
     impl::gen_database(database, target, true);
     if (!write_file(path, database)) {

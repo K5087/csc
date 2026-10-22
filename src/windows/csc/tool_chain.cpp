@@ -12,4 +12,8 @@ std::string_view ToolChain::GetArchiver() const {
     return str;
 }
 
+std::string_view ToolChain::GetScaner() const {
+    static std::string str = scanner.generic_string();
+    return str;
+}
 } // namespace csc
