@@ -62,8 +62,8 @@ bool Graph::build() {
 
     while (!rets.empty()) {
         auto opt = cmd::wait_any(rets);
-        if (!opt) {
-            loge("wait task failed");
+        if (!opt || rets[*opt].value.value_or(-1) != 0) {
+            loge("wait task failed or process run failed");
             return false;
         }
         auto index = *opt;

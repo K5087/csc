@@ -157,7 +157,6 @@ int main(int argc, char* argv[]) {
         std::vector<fs::path> shared_libs;
 
         bins.emplace_back(rsc_exe->GetTarget());
-        bins.emplace_back(build->GetTarget());
         bins.emplace_back(csc_exe->GetTarget());
 
         includes.emplace_back(include_dir);

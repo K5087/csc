@@ -82,8 +82,10 @@ std::optional<std::size_t> wait_any(std::vector<Ret>& rets) {
         DWORD exit_code;
 
         if (!GetExitCodeProcess(procs[index], &exit_code)) {
-            rets[index].value = exit_code;
+            error = GetLastError();
+            return std::nullopt;
         }
+        rets[index].value = exit_code;
 
         CloseHandle(procs[index]);
 
