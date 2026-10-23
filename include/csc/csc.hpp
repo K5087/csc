@@ -24,6 +24,12 @@ inline std::vector<fs::path> get_predefine_static() {
 }
 #endif
 
+#ifdef CSC_EXTEND_COMMAND
+inline std::vector<std::string> get_extend_command() {
+    return CSC_EXTEND_COMMAND;
+}
+#endif
+
 inline std::vector<std::string> get_predefine_macro() {
     std::vector<std::string> macros;
 
@@ -42,6 +48,10 @@ inline std::vector<std::string> get_predefine_macro() {
 #ifdef CSC_GEN_DATABASE
     macros.emplace_back(std::string("-DCSC_GEN_DATABASE=") +
                         QUOTE(CSC_GEN_DATABASE));
+#endif
+#ifdef CSC_EXTEND_COMMAND
+    macros.emplace_back(std::string("-DCSC_EXTEND_COMMAND=") +
+                        QUOTE(CSC_EXTEND_COMMAND));
 #endif
     return macros;
 }
@@ -88,7 +98,9 @@ inline void update_self(int argc, char** argv,
         temp.append_range(command);
         auto macros = get_predefine_macro();
         temp.append_range(macros);
-
+#ifdef CSC_EXTEND_COMMAND
+        temp.append_range(get_extend_command());
+#endif
         status = update_bin(bin, temp);
     } else {
         status = update_bin(bin, cmd);

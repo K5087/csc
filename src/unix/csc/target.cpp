@@ -3,6 +3,7 @@
 namespace csc {
 std::string_view get_extension(TargetType type, TargetFlavor flavor) {
     switch (type) {
+        case TargetType::head: return "";
         case TargetType::exec: return "";
         case TargetType::arch: return ".a";
         case TargetType::share: return ".so";

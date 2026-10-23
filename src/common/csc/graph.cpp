@@ -88,6 +88,7 @@ bool Graph::build() {
     objs.reserve(units.size());
     for (auto& unit : units) { objs.push_back(unit.obj_path); }
     switch (target.type) {
+        case TargetType::head: return true; // this won't happend
         case TargetType::exec: link = impl::link_exe(target, objs); break;
         case TargetType::arch: link = impl::link_lib(target, objs); break;
         case TargetType::share: link = impl::link_dll(target, objs); break;
@@ -284,6 +285,7 @@ cmd::Ret Graph::gen_bmi(const Unit& unit) const {
 }
 
 cmd::Ret Graph::gen_p1689(const Unit& unit) {
+    fs::create_directories(unit.p1689.parent_path());
     cmd::Cmd generate{
         target.tool_chain->GetScaner(),
         "-format=p1689",

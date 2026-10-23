@@ -42,7 +42,6 @@ const fs::path& lib_dir();
 /* return rsc installed package dir */
 fs::path package_dir(const std::string& name,
                      const std::string& version = "1.0.0");
-
 } // namespace get
 
 namespace impl {

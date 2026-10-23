@@ -47,7 +47,7 @@ llvm-clang tool-chain
 
 ## prepare
 
-1. use build program install or download packaged program unzip in somewhere
+1. use build program install
 
    > ./build/build.exe -i
 

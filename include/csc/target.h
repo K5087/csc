@@ -2,6 +2,7 @@
 #include <csc/tool_chain.h>
 
 #include <filesystem>
+#include <set>
 #include <source_location>
 #include <string>
 #include <vector>
@@ -14,6 +15,7 @@ using Path = std::filesystem::path;
 #define CURRENT_DIR CURRENT_PATH.parent_path()
 
 enum class TargetType {
+    head,
     exec,
     arch,
     share,
@@ -47,6 +49,7 @@ public:
 
     std::string name;                    // 目标名称
     std::vector<Path> units = {};        // 目标源码
+    std::set<Path> includes = {};        // 公开给依赖者的路径
     std::vector<std::string> flags = {}; // 目标添加的flag
 
     std::vector<std::shared_ptr<Target>> deps = {}; // 依赖的其他目标
@@ -66,23 +69,25 @@ public:
     void AddDepends(std::vector<std::shared_ptr<Target>>& targets);
     void AddDepends(std::initializer_list<std::shared_ptr<Target>> targets);
 
-    // convert to absolute path and -I to flags
+    // convert to absolute path and add to includes
     void AddInclude(const Path& includes);
     void AddIncludes(const std::vector<Path>& includes);
     void AddIncludes(std::initializer_list<Path> includes);
 };
 
-using Build = std::shared_ptr<Target>;
-
 std::string_view get_extension(TargetType type = TargetType::exec,
                                TargetFlavor flavor = TargetFlavor::GNU);
 
 namespace make {
-Build exec_target(const std::string& name, const Path& work_root = CURRENT_DIR);
-Build static_target(const std::string& name,
-                    const Path& work_root = CURRENT_DIR);
-Build dynamic_target(const std::string& name,
-                     const Path& work_root = CURRENT_DIR);
+
+std::shared_ptr<Target> head_target(const std::string& name,
+                                    const Path& work_root = CURRENT_DIR);
+std::shared_ptr<Target> exec_target(const std::string& name,
+                                    const Path& work_root = CURRENT_DIR);
+std::shared_ptr<Target> static_target(const std::string& name,
+                                      const Path& work_root = CURRENT_DIR);
+std::shared_ptr<Target> dynamic_target(const std::string& name,
+                                       const Path& work_root = CURRENT_DIR);
 
 } // namespace make
 } // namespace csc

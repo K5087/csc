@@ -25,9 +25,25 @@ std::string serialize(const std::vector<fs::path>& paths) {
     return str;
 }
 
+std::string serialize(const std::vector<std::string_view>& args) {
+    std::string str = "{";
+    bool is_first = true;
+    for (auto& arg : args) {
+        if (is_first)
+            is_first = false;
+        else
+            str += ",";
+        str += "\"" + std::string(arg) + "\"";
+    }
+
+    str += "}";
+    return str;
+}
+
 /* have path mean will generate in path, name will not use*/
 void handle_compile(const fs::path& csc, const fs::path& input,
                     const fs::path& output, std::vector<std::string_view> links,
+                    std::vector<std::string_view> extends = {},
                     bool link = false, bool use_static = false,
                     bool gen_data = false, bool print = false,
                     bool debug_info = false) {
@@ -57,7 +73,7 @@ void handle_compile(const fs::path& csc, const fs::path& input,
             };
             for (auto& lib : libs) { args.emplace_back(lib.generic_string()); }
             libs.append_range(links);
-            args.emplace_back("-DCSC_LINK_SHARED_LIB=" + serialize(libs));
+            args.emplace_back("-DCSC_LINK_STATIC_LIB=" + serialize(libs));
         } else {
 #ifdef _WIN32
             std::string shared = (shared_dir / "csc.dll").generic_string();
@@ -72,11 +88,17 @@ void handle_compile(const fs::path& csc, const fs::path& input,
     } else if (use_static) {
         logw("use static muse have -l arg");
     }
+
+    if (!extends.empty()) {
+        args.emplace_back("-DCSC_EXTEND_COMMAND=" + serialize(extends));
+    }
     compile.append_range(args);
     compile.append_range(links);
 
     compile.emplace_back("-o");
     compile.emplace_back(output_file);
+    compile.append_range(extends);
+
     compile.emplace_back("-std=c++26");
     if (gen_data) {
         std::string database = "[\n";
@@ -125,6 +147,8 @@ void handle_arg(int argc, char** argv) {
                    argp::Boundary::get_self);
     parser.add_opt({"-d"}, "generate with debug info",
                    argp::Boundary::get_self);
+    parser.add_opt({"-e"}, "add extend command to compile command",
+                   argp::Boundary::another_rule);
     parser.add_opt({"-p"}, "print commands str", argp::Boundary::get_self);
     parser.add_opt({"-o", "--output"}, "output exec file at dir or path",
                    argp::Boundary::one_arg);
@@ -162,6 +186,7 @@ void handle_arg(int argc, char** argv) {
     bool use_static = !parser.get_args("-s").empty();
     bool gen_data = !parser.get_args("-g").empty();
     bool debug_info = !parser.get_args("-d").empty();
+    std::vector<std::string_view> extends = parser.get_args("-e");
 
     bool print = !parser.get_args("-p").empty();
     Path output = parser.get_arg("-o", "");
@@ -181,7 +206,7 @@ void handle_arg(int argc, char** argv) {
 
     std::vector<std::string_view> links = parser.get_args("-L");
 
-    handle_compile(argv[0], input, output, links, use_link, use_static,
+    handle_compile(argv[0], input, output, links, extends, use_link, use_static,
                    gen_data, print, debug_info);
 }
 

@@ -15,22 +15,23 @@ void handle_compile(const fs::path& input, const fs::path& output,
     std::string input_file = input.generic_string();
     std::string output_file = output.generic_string();
     if (!fs::exists(output) || is_outdated(output, {input})) {
-        fs::path package_dir = rsc::get::package_dir("rsc");
+        fs::path rsc_dir = rsc::get::package_dir("rsc");
         std::string csc =
-            (package_dir / ("bin/csc" + std::string(get_extension()))).string();
+            (rsc_dir / ("bin/csc" + std::string(get_extension()))).string();
         std::string rsc;
         if (use_static) {
-            rsc = (package_dir / ("lib/static/rsc" +
-                                  std::string(get_extension(TargetType::arch))))
+            rsc = (rsc_dir / ("lib/static/rsc" +
+                              std::string(get_extension(TargetType::arch))))
                       .string();
 
         } else {
-            rsc =
-                (package_dir / ("lib/shared/rsc" +
-                                std::string(get_extension(TargetType::share))))
-                    .string();
+            rsc = (rsc_dir / ("lib/shared/rsc" +
+                              std::string(get_extension(TargetType::share))))
+                      .string();
         }
-        cmd::Cmd compile{csc, input_file, "-o", output_file, "-L", rsc};
+        auto package_dir = "-I" + rsc::get::package_dir().generic_string();
+        cmd::Cmd compile{csc,  input_file, "-o", output_file,
+                         "-L", rsc,        "-e", package_dir};
         if (link) { compile.emplace_back("-l"); }
         if (use_static) { compile.emplace_back("-s"); }
         if (gen_data) { compile.emplace_back("-g"); }

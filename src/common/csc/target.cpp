@@ -25,7 +25,7 @@ void Target::AddDepends(
 }
 
 void Target::AddInclude(const Path& include) {
-    flags.push_back("-I" + std::filesystem::absolute(include).generic_string());
+    includes.insert(std::filesystem::absolute(include));
 }
 
 void Target::AddIncludes(const std::vector<Path>& includes) {
@@ -68,24 +68,37 @@ Target::Target(const std::string& name, TargetType type, const Path& work_root,
 
 namespace make {
 
-Build exec_target(const std::string& name, const Path& work_root) {
+std::shared_ptr<Target> head_target(const std::string& name,
+                                    const Path& work_root) {
+    auto target = std::make_shared<Target>(name, TargetType::head, work_root,
+                                           work_root / "build");
+    target->is_build = true;
+    return target;
+}
+
+std::shared_ptr<Target> exec_target(const std::string& name,
+                                    const Path& work_root) {
     return std::make_shared<Target>(name, TargetType::exec, work_root,
                                     work_root / "build");
 }
 
-Build static_target(const std::string& name, const Path& work_root) {
+std::shared_ptr<Target> static_target(const std::string& name,
+                                      const Path& work_root) {
     return std::make_shared<Target>(name, TargetType::arch, work_root,
                                     work_root / "build");
 }
 
-Build dynamic_target(const std::string& name, const Path& work_root) {
+std::shared_ptr<Target> dynamic_target(const std::string& name,
+                                       const Path& work_root) {
     return std::make_shared<Target>(name, TargetType::share, work_root,
                                     work_root / "build");
 }
+
 } // namespace make
 
 std::string Serialize(TargetType type) {
     switch (type) {
+        case TargetType::head: return "head";
         case TargetType::exec: return "exec";
         case TargetType::arch: return "arch";
         case TargetType::share: return "share";

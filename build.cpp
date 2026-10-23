@@ -37,7 +37,7 @@ fs::path platform_source = current / "src" / platform;
 bool gen_debug = false;
 bool print_command = false;
 
-Build make_build(const std::string& name) {
+std::shared_ptr<Target> make_build(const std::string& name) {
     auto target = make::static_target(name);
     target->build = build_dir;
     target->tool_chain = llvm;
@@ -51,7 +51,7 @@ Build make_build(const std::string& name) {
     return target;
 }
 
-Build make_shared(std::shared_ptr<Target> target) {
+std::shared_ptr<Target> make_shared(std::shared_ptr<Target> target) {
     auto shared = std::make_shared<Target>(*target);
     shared->type = TargetType::share;
     return shared;
