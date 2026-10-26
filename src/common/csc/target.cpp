@@ -7,7 +7,7 @@ std::string Target::GetTarget() const {
 }
 
 Path Target::GetBuildPath(const Path& origin, const Path& new_root) const {
-    Path relative = std::filesystem::relative(origin, root);
+    Path relative = origin.lexically_relative(root);
     return new_root / relative;
 }
 
@@ -72,7 +72,6 @@ std::shared_ptr<Target> head_target(const std::string& name,
                                     const Path& work_root) {
     auto target = std::make_shared<Target>(name, TargetType::head, work_root,
                                            work_root / "build");
-    target->is_build = true;
     return target;
 }
 

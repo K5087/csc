@@ -6,11 +6,13 @@
 #include <algorithm>
 
 namespace csc {
-Graph::Graph(Target& target) : target(target) {
-    for (auto& unit : target.units) {
-        units.emplace_back(unit, target.GetBuildPath(unit, target.build));
-    }
-}
+SubGraph::SubGraph(std::shared_ptr<Target> target, std::size_t begin,
+                   std::size_t end)
+    : target(target),
+      begin(begin),
+      end(end) {}
+
+Graph::Graph(std::shared_ptr<Target> target) : current_target(target) {}
 
 bool Graph::parse_p1689(Unit& unit) {
     auto json = read_file(unit.p1689);
@@ -24,7 +26,21 @@ bool Graph::parse_p1689(Unit& unit) {
 }
 
 bool Graph::build() {
-    for (auto& unit : units) {
+    auto cache = current_target;
+    for (auto& dep : current_target->deps) {
+        current_target->includes.insert_range(dep->includes);
+        current_target = dep;
+        build();
+    }
+    current_target = cache;
+
+    std::filesystem::create_directories(current_target->build);
+
+    add_target(current_target);
+    auto subgraph = graphs.back();
+
+    for (std::size_t i = subgraph.begin; i <= subgraph.end; i++) {
+        auto& unit = units[i];
         if (!fs::exists(unit.p1689)) {
             rets.push_back(gen_p1689(unit));
             if (rets.back().value.value_or(-1) != 0) {
@@ -41,21 +57,22 @@ bool Graph::build() {
         }
     }
 
-    for (auto& unit : units) {
+    for (std::size_t i = subgraph.begin; i <= subgraph.end; i++) {
+        auto& unit = units[i];
         if (!parse_p1689(unit)) {
             loge("parse p1689 for %s failed", unit.p1689_path.c_str());
             return false;
         }
     }
-    if (!recover_depend()) {
+    if (!recover_depend(subgraph)) {
         loge("recover depend relation failed");
         return false;
     }
 
-    if (have_cycle()) { return false; }
+    if (have_cycle(subgraph)) { return false; }
 
     rets.clear();
-    for (std::size_t i = 0; i < units.size(); i++) {
+    for (std::size_t i = subgraph.begin; i <= subgraph.end; i++) {
         tasks.emplace_back(std::make_shared<Task>(i));
     }
     for (auto& task : tasks) { handle_task(task); }
@@ -63,35 +80,45 @@ bool Graph::build() {
     while (!rets.empty()) {
         auto opt = cmd::wait_any(rets);
         if (!opt || rets[*opt].value.value_or(-1) != 0) {
-            loge("wait task failed or process run failed");
+            loge("wait task failed or process run failed: %s",
+                 rets[*opt].value.value_or(-1));
             return false;
         }
         auto index = *opt;
+        auto task = tasks[ret_map[index]];
         rets.erase(rets.begin() + index);
-        auto task_index = ret_map[index];
         ret_map.erase(index);
-        handle_task(tasks[task_index]);
+        if (task->status == Status::bmi) task->status = Status::object;
+        handle_task(task);
     }
 
     std::vector<fs::path> deps;
-    for (const auto& dep : target.deps) { deps.push_back(dep->GetTarget()); };
-    if (!need_rebuild && !is_outdated(target.GetTarget(), deps)) {
-        target.is_build = true;
-        logi("%s %s not need to update", target.name.c_str(),
-             Serialize(target.type).c_str());
+    for (const auto& dep : current_target->deps) {
+        deps.push_back(dep->GetTarget());
+    };
+    if (!need_rebuild && !is_outdated(current_target->GetTarget(), deps)) {
+        current_target->is_build = true;
+        logi("%s %s not need to update", current_target->name.c_str(),
+             Serialize(current_target->type).c_str());
         return true;
     }
 
     bool link;
     // link obj
     std::vector<std::string> objs{};
-    objs.reserve(units.size());
+    objs.reserve(subgraph.end - subgraph.begin + 1);
     for (auto& unit : units) { objs.push_back(unit.obj_path); }
-    switch (target.type) {
-        case TargetType::head: return true; // this won't happend
-        case TargetType::exec: link = impl::link_exe(target, objs); break;
-        case TargetType::arch: link = impl::link_lib(target, objs); break;
-        case TargetType::share: link = impl::link_dll(target, objs); break;
+    switch (current_target->type) {
+        case TargetType::head: return true; // do nothing
+        case TargetType::exec:
+            link = impl::link_exe(*current_target, objs);
+            break;
+        case TargetType::arch:
+            link = impl::link_lib(*current_target, objs);
+            break;
+        case TargetType::share:
+            link = impl::link_dll(*current_target, objs);
+            break;
     }
 
     return link;
@@ -105,18 +132,17 @@ void Graph::handle_task(std::shared_ptr<Task> task) {
         case Status::bmi: {
             // generate bmi
             for (auto& [name, index] : unit.require) {
-                auto& bmi = units[index].pcm;
                 if (!is_newest(index)) {
                     module_dep_map[index].insert(task);
                     return;
                 }
             }
-            task->status = Status::object;
-            auto deps = impl::get_deps(unit.obj, target.root);
+            auto deps = impl::get_deps(unit.obj, current_target->root);
             if (unit.is_module && is_outdated(unit.pcm, deps)) {
-                rets.push_back(gen_bmi(unit));
+                register_cmd(task, gen_bmi(unit));
                 break;
             }
+            task->status = Status::object;
         }
         case Status::object: {
             if (auto it = module_dep_map.find(task->index);
@@ -132,10 +158,10 @@ void Graph::handle_task(std::shared_ptr<Task> task) {
                     handle_task(subtask);
                 }
             }
-            auto deps = impl::get_deps(unit.obj, target.root);
+            auto deps = impl::get_deps(unit.obj, current_target->root);
             if (is_outdated(unit.obj, deps)) {
                 need_rebuild = true;
-                rets.push_back(compile_module(unit));
+                register_cmd(task, compile_module(unit));
                 break;
             }
             task->status = Status::end;
@@ -144,15 +170,14 @@ void Graph::handle_task(std::shared_ptr<Task> task) {
         default: throw std::runtime_error("unexpected task status");
     }
     // task index same as unit index
-    if (rets.back().proc) { ret_map.insert({rets.size() - 1, task->index}); }
 }
 
-bool Graph::recover_depend() {
+bool Graph::recover_depend(const SubGraph& subgraph) {
     ref_map<const fs::path, std::vector<std::size_t>> source_req_map;
 
     ref_map<const std::string, std::vector<std::size_t>> logical_req_map;
 
-    for (std::size_t i = 0; i < units.size(); i++) {
+    for (std::size_t i = subgraph.begin; i <= subgraph.end; i++) {
         auto& unit = units[i];
         for (auto& rule : unit.info.rules) {
             for (auto& provide : rule.provides) {
@@ -218,9 +243,9 @@ bool Graph::recover_depend() {
     return true;
 }
 
-bool Graph::have_cycle() {
+bool Graph::have_cycle(const SubGraph& subgraph) {
     enum class Color { white, gray, black };
-    std::vector<Color> graph{units.size(), Color::white};
+    std::vector<Color> graph{subgraph.end - subgraph.begin + 1, Color::white};
     std::vector<std::size_t> stack;
     std::vector<std::size_t> cycle;
     auto dfs = [&](auto&& self, std::size_t index) {
@@ -240,7 +265,7 @@ bool Graph::have_cycle() {
         graph[index] = Color::black;
         return false;
     };
-    for (std::size_t i = 0; i < units.size(); i++) {
+    for (std::size_t i = subgraph.begin; i <= subgraph.end; i++) {
         if (graph[i] == Color::white) {
             if (dfs(dfs, i)) {
                 std::string infos;
@@ -265,10 +290,10 @@ bool Graph::have_cycle() {
 }
 
 cmd::Ret Graph::gen_bmi(const Unit& unit) const {
-    cmd::Cmd generate{target.tool_chain->GetCompiler(), "--precompile",
+    cmd::Cmd generate{current_target->tool_chain->GetCompiler(), "--precompile",
                       unit.path_string};
     generate.reserve(generate.size() + unit.require.size() + 2 +
-                     target.flags.size());
+                     current_target->flags.size());
     std::vector<std::string> cache;
     for (auto& [name, index] : unit.require) {
         cache.push_back("-fmodule-file=" + name + "=" +
@@ -278,40 +303,44 @@ cmd::Ret Graph::gen_bmi(const Unit& unit) const {
     generate.emplace_back("-o");
     generate.push_back(unit.pcm_path);
     generate.emplace_back("-MMD");
-    generate.append_range(target.flags);
+    generate.append_range(current_target->flags);
 
-    if (target.print_cmd) { print_cmd(generate); }
+    if (current_target->print_cmd) { print_cmd(generate); }
     return cmd::run_cmd(generate, {.wait_return = false});
 }
 
 cmd::Ret Graph::gen_p1689(const Unit& unit) {
     fs::create_directories(unit.p1689.parent_path());
     cmd::Cmd generate{
-        target.tool_chain->GetScaner(),
+        current_target->tool_chain->GetScaner(),
         "-format=p1689",
         "-o",
         unit.p1689_path,
         "--",
-        target.tool_chain->GetCompiler(),
+        current_target->tool_chain->GetCompiler(),
         "-c",
         unit.path_string,
         "-o",
         unit.obj_path,
     };
     // ISSUE:"-MMD" clang-scan will include system header
-    generate.append_range(target.flags);
-    if (target.print_cmd) { print_cmd(generate); }
+    generate.append_range(current_target->flags);
+    if (current_target->print_cmd) { print_cmd(generate); }
     return cmd::run_cmd(generate, {.wait_return = false});
 }
 
 cmd::Ret Graph::compile_module(const Unit& unit) const {
     std::vector<std::string> cache;
-    cmd::Cmd compile{target.tool_chain->GetCompiler(), "-c"};
+    cmd::Cmd compile{current_target->tool_chain->GetCompiler(), "-c"};
     compile.reserve(compile.size() + 1 + unit.require.size() + 3 +
-                    target.flags.size());
+                    current_target->flags.size());
     if (unit.is_module) {
         compile.emplace_back(unit.pcm_path);
     } else {
+        compile.reserve(compile.capacity() + current_target->includes.size());
+        for (auto& include : current_target->includes) {
+            current_target->flags.push_back("-I" + include.generic_string());
+        }
         compile.emplace_back(unit.path_string);
     }
     for (auto& [name, index] : unit.require) {
@@ -322,13 +351,27 @@ cmd::Ret Graph::compile_module(const Unit& unit) const {
     compile.emplace_back("-o");
     compile.push_back(unit.obj_path);
     if (!unit.is_module) { compile.emplace_back("-MMD"); }
-    compile.append_range(target.flags);
+    compile.append_range(current_target->flags);
 
-    if (target.print_cmd) { print_cmd(compile); }
+    if (current_target->print_cmd) { print_cmd(compile); }
     return cmd::run_cmd(compile, {.wait_return = false});
 }
 
 bool Graph::is_newest(std::size_t index) const {
     return index < tasks.size() && tasks[index]->status > Status::bmi;
+}
+
+void Graph::add_target(std::shared_ptr<Target> target) {
+    for (auto& unit : target->units) {
+        units.emplace_back(unit, target->GetBuildPath(unit, target->build));
+    }
+    graphs.emplace_back(target, units.size() - target->units.size(),
+                        units.size() - 1);
+}
+
+void Graph::register_cmd(std::shared_ptr<Task> task, cmd::Ret ret) {
+    auto index = rets.size();
+    rets.push_back(ret);
+    if (ret.proc) { ret_map.insert({index, task->index}); }
 }
 } // namespace csc

@@ -33,3 +33,5 @@ below use /rsc as install dir express
 `/rsc/package_name/version/include` package includes file dir
 
 `/rsc/package_name/version/import` package extend useable file dir
+
+`/rsc/package_name/version/src` source file dir

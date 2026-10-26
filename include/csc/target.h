@@ -80,6 +80,7 @@ std::string_view get_extension(TargetType type = TargetType::exec,
 
 namespace make {
 
+// .h not need to compile,builde .cppm need generate bmi
 std::shared_ptr<Target> head_target(const std::string& name,
                                     const Path& work_root = CURRENT_DIR);
 std::shared_ptr<Target> exec_target(const std::string& name,

@@ -124,7 +124,7 @@ bool build_target(std::shared_ptr<Target> target,
     bool link;
     // link obj
     switch (target->type) {
-        case TargetType::head: return true; // this won't happend
+        case TargetType::head: return true; // do nothing
         case TargetType::exec: link = impl::link_exe(*target, objs); break;
         case TargetType::arch: link = impl::link_lib(*target, objs); break;
         case TargetType::share: link = impl::link_dll(*target, objs); break;
@@ -144,19 +144,7 @@ bool build_target(std::shared_ptr<Target> target,
 
 bool build_graph(std::shared_ptr<Target> target,
                  std::function<void()> before_link) {
-    std::filesystem::create_directories(target->build);
-    // check deps has build
-    for (auto& build : target->deps) {
-        target->includes.insert_range(build->includes);
-        if (!build->is_build) {
-            // generate deps
-            if (!build_graph(build)) { return false; }
-        }
-    }
-    for (auto& include : target->includes) {
-        target->flags.push_back("-I" + include.generic_string());
-    }
-    Graph graph(*target);
+    Graph graph(target);
     bool ret = graph.build();
     if (ret) {
         target->is_build = true;

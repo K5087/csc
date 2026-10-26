@@ -8,39 +8,47 @@
 using namespace csc;
 namespace fs = std::filesystem;
 
+struct Info {
+    fs::path input;
+    fs::path output;
+    bool link = false;
+    bool use_static = false;
+    bool gen_data = false;
+    bool debug = false;
+};
+
 /* have path mean will generate in path, name will not use*/
-void handle_compile(const fs::path& input, const fs::path& output,
-                    bool link = false, bool use_static = false,
-                    bool gen_data = false) {
-    std::string input_file = input.generic_string();
-    std::string output_file = output.generic_string();
-    if (!fs::exists(output) || is_outdated(output, {input})) {
+void handle_compile(const Info& info) {
+    std::string input_file = info.input.generic_string();
+    std::string output_file = info.output.generic_string();
+    if (!fs::exists(info.output) || is_outdated(info.output, {info.input})) {
         fs::path rsc_dir = rsc::get::package_dir("rsc");
         std::string csc =
             (rsc_dir / ("bin/csc" + std::string(get_extension()))).string();
         std::string rsc;
-        if (use_static) {
+        if (info.use_static) {
             rsc = (rsc_dir / ("lib/static/rsc" +
                               std::string(get_extension(TargetType::arch))))
-                      .string();
+                      .generic_string();
 
         } else {
             rsc = (rsc_dir / ("lib/shared/rsc" +
                               std::string(get_extension(TargetType::share))))
-                      .string();
+                      .generic_string();
         }
         auto package_dir = "-I" + rsc::get::package_dir().generic_string();
         cmd::Cmd compile{csc,  input_file, "-o", output_file,
                          "-L", rsc,        "-e", package_dir};
-        if (link) { compile.emplace_back("-l"); }
-        if (use_static) { compile.emplace_back("-s"); }
-        if (gen_data) { compile.emplace_back("-g"); }
+        if (info.link) { compile.emplace_back("-l"); }
+        if (info.use_static) { compile.emplace_back("-s"); }
+        if (info.gen_data) { compile.emplace_back("-g"); }
+        if (info.debug) { compile.emplace_back("-d"); }
         auto Ret = cmd::run_cmd(compile);
         if (Ret.value.value_or(-1) != 0) { return; }
     }
     cmd::Cmd exec{output_file};
     if (cmd::run_cmd(exec).value.value_or(-1) != 0) {
-        loge("execute %s failed", output.string().c_str());
+        loge("execute %s failed", info.output.string().c_str());
     }
 }
 
@@ -65,6 +73,8 @@ void handle_arg(int argc, char** argv) {
                    argp::Boundary::get_self);
     parser.add_opt({"-o", "--output"}, "output exec file at dir or path",
                    argp::Boundary::one_arg);
+    parser.add_opt({"-d"}, "generate with debug info",
+                   argp::Boundary::get_self);
 
     parser.add_pos("input", false, "input script file path",
                    argp::Boundary::another_rule);
@@ -88,14 +98,16 @@ void handle_arg(int argc, char** argv) {
         loge("no input file");
         return;
     }
-    fs::path input = {inputs[0]};
+    Info info;
+    info.input = {inputs[0]};
     std::string name =
-        input.filename().replace_extension(get_extension()).string();
+        info.input.filename().replace_extension(get_extension()).string();
 
     std::string_view dir = parser.get_arg("-n", "");
-    bool use_link = !parser.get_args("-l").empty();
-    bool use_static = !parser.get_args("-s").empty();
-    bool gen_data = !parser.get_args("-g").empty();
+    info.link = !parser.get_args("-l").empty();
+    info.use_static = !parser.get_args("-s").empty();
+    info.gen_data = !parser.get_args("-g").empty();
+    info.debug = !parser.get_args("-d").empty();
     Path output = parser.get_arg("-o", "");
     if (!output.empty()) {
         if (fs::is_directory(output)) { output = output / name; }
@@ -111,7 +123,7 @@ void handle_arg(int argc, char** argv) {
             }
         }
     }
-    handle_compile(input, output, use_link, use_static, gen_data);
+    handle_compile(info);
 }
 
 int main(int argc, char* argv[]) {
