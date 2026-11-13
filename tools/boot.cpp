@@ -10,7 +10,7 @@ std::string platform = "windows";
 std::vector<std::string> flags = {"-luuid", "-lole32"};
 #else
 std::string platform = "unix";
-std::vector<std::string> flags = {"-luuid", "-lole32"};
+std::vector<std::string> flags = {"-fPIC"};
 #endif
 
 int main(int argc, char* argv[]) {

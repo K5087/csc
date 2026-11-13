@@ -325,12 +325,11 @@ void gen_database(std::string& database, std::shared_ptr<Target> target,
                 database += ",\n";
             }
             std::string unit_path =
-                fs::relative(unit, target->root).generic_string();
-            std::string obj =
-                fs::relative(target->GetBuildPath(unit, target->build)
-                                 .replace_extension(".o"),
-                             target->root)
-                    .generic_string();
+                unit.lexically_relative(target->root).generic_string();
+            std::string obj = target->GetBuildPath(unit, target->build)
+                                  .replace_extension(".o")
+                                  .lexically_relative(target->root)
+                                  .generic_string();
             Cmd compile{target->tool_chain->GetCompiler(), "-c", unit_path,
                         "-o", obj};
             compile.append_range(target->flags);

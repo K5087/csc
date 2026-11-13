@@ -5,6 +5,8 @@
 #include <rsc/os.h>
 #include <rsc/rsc.h>
 
+#include <csc/debug.hpp>
+
 using namespace csc;
 namespace fs = std::filesystem;
 
@@ -39,6 +41,7 @@ void handle_compile(const Info& info) {
         auto package_dir = "-I" + rsc::get::package_dir().generic_string();
         cmd::Cmd compile{csc,  input_file, "-o", output_file,
                          "-L", rsc,        "-e", package_dir};
+
         if (info.link) { compile.emplace_back("-l"); }
         if (info.use_static) { compile.emplace_back("-s"); }
         if (info.gen_data) { compile.emplace_back("-g"); }
@@ -47,8 +50,9 @@ void handle_compile(const Info& info) {
         if (Ret.value.value_or(-1) != 0) { return; }
     }
     cmd::Cmd exec{output_file};
-    if (cmd::run_cmd(exec).value.value_or(-1) != 0) {
-        loge("execute %s failed", info.output.string().c_str());
+    if (auto code = cmd::run_cmd(exec).value.value_or(-1); code != 0) {
+        loge("execute %s failed: return %d, error %lu",
+             info.output.string().c_str(), code, cmd::error);
     }
 }
 
@@ -108,15 +112,15 @@ void handle_arg(int argc, char** argv) {
     info.use_static = !parser.get_args("-s").empty();
     info.gen_data = !parser.get_args("-g").empty();
     info.debug = !parser.get_args("-d").empty();
-    Path output = parser.get_arg("-o", "");
-    if (!output.empty()) {
-        if (fs::is_directory(output)) { output = output / name; }
+    info.output = parser.get_arg("-o", "");
+    if (!info.output.empty()) {
+        if (fs::is_directory(info.output)) { info.output = info.output / name; }
     } else {
         if (dir.empty()) {
-            output = rsc::get::script_dir() / name;
+            info.output = rsc::get::script_dir() / name;
         } else {
             if (os::valid_name(dir))
-                output = rsc::get::script_dir() / dir / name;
+                info.output = rsc::get::script_dir() / dir / name;
             else {
                 loge("%s is invalid dir name", dir.data());
                 return;
