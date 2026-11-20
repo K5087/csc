@@ -79,6 +79,9 @@ inline void update_self(int argc, char** argv,
                         const cmd::Cmd& cmd = {}, bool exec_new = true,
                         bool fail_exit = true) {
     fs::path bin = argv[0];
+#ifdef _WIN32
+    if (bin.extension() != ".exe") { bin.replace_extension(get_extension()); }
+#endif // _WIN32
     bool status = false;
     if (!is_outdated(bin, files)) { return; }
     if (cmd.empty()) {

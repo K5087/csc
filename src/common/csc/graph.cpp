@@ -39,7 +39,7 @@ bool Graph::build() {
     add_target(current_target);
     auto subgraph = graphs.back();
 
-    for (std::size_t i = subgraph.begin; i <= subgraph.end; i++) {
+    for (std::size_t i = subgraph.begin; i < subgraph.end; i++) {
         auto& unit = units[i];
         if (!fs::exists(unit.p1689)) {
             rets.push_back(gen_p1689(unit));
@@ -57,7 +57,7 @@ bool Graph::build() {
         }
     }
 
-    for (std::size_t i = subgraph.begin; i <= subgraph.end; i++) {
+    for (std::size_t i = subgraph.begin; i < subgraph.end; i++) {
         auto& unit = units[i];
         if (!parse_p1689(unit)) {
             loge("parse p1689 for %s failed", unit.p1689_path.c_str());
@@ -72,7 +72,7 @@ bool Graph::build() {
     if (have_cycle(subgraph)) { return false; }
 
     rets.clear();
-    for (std::size_t i = subgraph.begin; i <= subgraph.end; i++) {
+    for (std::size_t i = subgraph.begin; i < subgraph.end; i++) {
         tasks.emplace_back(std::make_shared<Task>(i));
     }
     for (auto& task : tasks) { handle_task(task); }
@@ -89,6 +89,7 @@ bool Graph::build() {
             return false;
         }
         auto index = *opt;
+
         auto task = tasks[ret_map[index]];
         rets.erase(rets.begin() + index);
         ret_map.erase(index);
@@ -110,7 +111,7 @@ bool Graph::build() {
     bool link;
     // link obj
     std::vector<std::string> objs{};
-    objs.reserve(subgraph.end - subgraph.begin + 1);
+    objs.reserve(subgraph.end - subgraph.begin);
     for (auto& unit : units) { objs.push_back(unit.obj_path); }
     switch (current_target->type) {
         case TargetType::head: return true; // do nothing
@@ -181,7 +182,7 @@ bool Graph::recover_depend(const SubGraph& subgraph) {
 
     ref_map<const std::string, std::vector<std::size_t>> logical_req_map;
 
-    for (std::size_t i = subgraph.begin; i <= subgraph.end; i++) {
+    for (std::size_t i = subgraph.begin; i < subgraph.end; i++) {
         auto& unit = units[i];
         for (auto& rule : unit.info.rules) {
             for (auto& provide : rule.provides) {
@@ -249,7 +250,7 @@ bool Graph::recover_depend(const SubGraph& subgraph) {
 
 bool Graph::have_cycle(const SubGraph& subgraph) {
     enum class Color { white, gray, black };
-    std::vector<Color> graph{subgraph.end - subgraph.begin + 1, Color::white};
+    std::vector<Color> graph{subgraph.end - subgraph.begin, Color::white};
     std::vector<std::size_t> stack;
     std::vector<std::size_t> cycle;
     auto dfs = [&](auto&& self, std::size_t index) {
@@ -269,7 +270,7 @@ bool Graph::have_cycle(const SubGraph& subgraph) {
         graph[index] = Color::black;
         return false;
     };
-    for (std::size_t i = subgraph.begin; i <= subgraph.end; i++) {
+    for (std::size_t i = subgraph.begin; i < subgraph.end; i++) {
         if (graph[i] == Color::white) {
             if (dfs(dfs, i)) {
                 std::string infos;
@@ -370,7 +371,7 @@ void Graph::add_target(std::shared_ptr<Target> target) {
         units.emplace_back(unit, target->GetBuildPath(unit, target->build));
     }
     graphs.emplace_back(target, units.size() - target->units.size(),
-                        units.size() - 1);
+                        units.size());
 }
 
 void Graph::register_cmd(std::shared_ptr<Task> task, cmd::Ret ret) {

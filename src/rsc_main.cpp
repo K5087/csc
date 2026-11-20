@@ -103,7 +103,7 @@ void handle_arg(int argc, char** argv) {
         return;
     }
     Info info;
-    info.input = {inputs[0]};
+    info.input = {fs::canonical(inputs[0])};
     std::string name =
         info.input.filename().replace_extension(get_extension()).string();
 

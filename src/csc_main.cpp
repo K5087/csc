@@ -178,7 +178,7 @@ void handle_arg(int argc, char** argv) {
         loge("no input file");
         return;
     }
-    fs::path input = {inputs[0]};
+    fs::path input = {fs::canonical(inputs[0])};
     std::string default_name =
         input.filename().replace_extension(get_extension()).string();
     std::string_view name = parser.get_arg("-n", default_name);

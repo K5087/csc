@@ -47,7 +47,6 @@ std::shared_ptr<Target> make_build(const std::string& name) {
     target->flags.append_range(flags);
     target->AddIncludes({current / "include"});
     if (print_command) { target->print_cmd = true; }
-
     return target;
 }
 
@@ -174,6 +173,5 @@ int main(int argc, char* argv[]) {
         rsc::create_shim("rsc", bins, shared_libs, version);
         logi("install complete");
     }
-
     return 0;
 }
