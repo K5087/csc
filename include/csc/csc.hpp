@@ -102,7 +102,8 @@ inline void update_self(int argc, char** argv,
         auto macros = get_predefine_macro();
         temp.append_range(macros);
 #ifdef CSC_EXTEND_COMMAND
-        temp.append_range(get_extend_command());
+        auto extends = get_extend_command();
+        temp.append_range(extends);
 #endif
         status = update_bin(bin, temp);
     } else {

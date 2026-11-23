@@ -41,7 +41,7 @@ bool Graph::build() {
 
     for (std::size_t i = subgraph.begin; i < subgraph.end; i++) {
         auto& unit = units[i];
-        if (!fs::exists(unit.p1689)) {
+        if (!fs::exists(unit.p1689) || is_outdated(unit.p1689, {unit.path})) {
             rets.push_back(gen_p1689(unit));
             if (rets.back().value.value_or(-1) != 0) {
                 loge("generate p1689 for %s failed", unit.p1689_path.c_str());
@@ -90,9 +90,9 @@ bool Graph::build() {
         }
         auto index = *opt;
 
-        auto task = tasks[ret_map[index]];
+        auto task = ret_tasks[index];
         rets.erase(rets.begin() + index);
-        ret_map.erase(index);
+        ret_tasks.erase(ret_tasks.begin() + index);
         if (task->status == Status::bmi) task->status = Status::object;
         handle_task(task);
     }
@@ -112,7 +112,9 @@ bool Graph::build() {
     // link obj
     std::vector<std::string> objs{};
     objs.reserve(subgraph.end - subgraph.begin);
-    for (auto& unit : units) { objs.push_back(unit.obj_path); }
+    for (std::size_t i = subgraph.begin; i < subgraph.end; ++i) {
+        objs.push_back(units[i].obj_path);
+    }
     switch (current_target->type) {
         case TargetType::head: return true; // do nothing
         case TargetType::exec:
@@ -300,11 +302,16 @@ cmd::Ret Graph::gen_bmi(const Unit& unit) const {
     generate.reserve(generate.size() + unit.require.size() + 2 +
                      current_target->flags.size());
     std::vector<std::string> cache;
-    for (auto& [name, index] : unit.require) {
-        cache.push_back("-fmodule-file=" + name + "=" +
-                        units[index].pcm.generic_string());
-        generate.push_back(cache.back());
-    }
+
+    auto add_dep = [&](this auto&& self, const Unit& unit) -> void {
+        for (auto& [name, index] : unit.require) {
+            cache.push_back("-fmodule-file=" + name + "=" +
+                            units[index].pcm.generic_string());
+            generate.push_back(cache.back());
+            self(units[index]);
+        }
+    };
+    add_dep(unit);
     generate.emplace_back("-o");
     generate.push_back(unit.pcm_path);
     generate.emplace_back("-MMD");
@@ -348,11 +355,15 @@ cmd::Ret Graph::compile_module(const Unit& unit) const {
         }
         compile.emplace_back(unit.path_string);
     }
-    for (auto& [name, index] : unit.require) {
-        cache.push_back("-fmodule-file=" + name + "=" +
-                        units[index].pcm.generic_string());
-        compile.push_back(cache.back());
-    }
+    auto add_dep = [&](this auto&& self, const Unit& unit) -> void {
+        for (auto& [name, index] : unit.require) {
+            cache.push_back("-fmodule-file=" + name + "=" +
+                            units[index].pcm.generic_string());
+            compile.push_back(cache.back());
+            self(units[index]);
+        }
+    };
+    add_dep(unit);
     compile.emplace_back("-o");
     compile.push_back(unit.obj_path);
     if (!unit.is_module) { compile.emplace_back("-MMD"); }
@@ -377,6 +388,6 @@ void Graph::add_target(std::shared_ptr<Target> target) {
 void Graph::register_cmd(std::shared_ptr<Task> task, cmd::Ret ret) {
     auto index = rets.size();
     rets.push_back(ret);
-    if (ret.proc) { ret_map.insert({index, task->index}); }
+    if (ret.proc) { ret_tasks.push_back(task); }
 }
 } // namespace csc

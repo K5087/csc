@@ -86,8 +86,8 @@ private:
     // module provide unit index, require module task
     std::unordered_map<std::size_t, std::set<std::shared_ptr<Task>>>
         module_dep_map;
-    // rets index, task index
-    std::unordered_map<std::size_t, std::size_t> ret_map;
+
+    std::vector<std::shared_ptr<Task>> ret_tasks;
 };
 
 } // namespace csc

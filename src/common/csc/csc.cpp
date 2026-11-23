@@ -20,7 +20,13 @@ bool update_bin(fs::path bin, const cmd::Cmd& cmd) {
     old_bin += ".old";
     bool exist = std::filesystem::exists(bin);
     if (exist) {
-        std::filesystem::rename(bin, old_bin);
+        try {
+            std::filesystem::rename(bin, old_bin);
+        } catch (const std::filesystem::filesystem_error& e) {
+            logc("rename failed: %d %s", e.code().value(),
+                 e.code().message().c_str());
+            return false;
+        }
     } else {
         loge("%s not exist", bin.generic_string().c_str());
         return false;
@@ -57,11 +63,7 @@ bool is_outdated(const fs::path& file, const std::vector<Path>& inputs) {
     for (size_t i = 0; i < inputs.size(); ++i) {
         auto input_time = last_write_time(inputs[i]);
 
-        if (input_time > file_name) {
-            logc("outdated: %s newer than %s",
-                 inputs[i].generic_string().c_str(), file.string().c_str());
-            return true;
-        }
+        if (input_time > file_name) { return true; }
     }
     return false;
 }
